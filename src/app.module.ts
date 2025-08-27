@@ -9,10 +9,13 @@ import { ProductionOrderModule } from './production-order/production-order.modul
   imports: [
     // Setup database
     TypeOrmModule.forRoot({
-      type: 'sqlite',
-      database: 'db.sqlite',
+      type: 'postgres',
+      url: process.env.DATABASE_URL,
       entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: true,
+      synchronize: process.env.NODE_ENV !== 'production', // Hanya dev
+      ssl: {
+        rejectUnauthorized: false, // Wajib untuk Railway
+      },
     }),
 
     // Daftarkan module produksi
