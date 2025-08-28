@@ -11,7 +11,8 @@ import { AppService } from './app.service';
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
-      envFilePath: '.env',
+      envFilePath:
+        process.env.NODE_ENV === 'development' ? '.env.local' : '.env',
     }),
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
@@ -20,7 +21,6 @@ import { AppService } from './app.service';
 
         return {
           type: 'postgres',
-          // kalau ada DB_URL pakai itu, kalau tidak pakai host/port/username
           ...(db.url
             ? { url: db.url }
             : {
@@ -33,8 +33,7 @@ import { AppService } from './app.service';
           ssl: db.ssl ? { rejectUnauthorized: false } : false,
           synchronize: db.synchronize,
           logging: db.logging,
-          autoLoadEntities: true,
-          entities: [__dirname + '/modules/**/*.entity{.ts,.js}'],
+          autoLoadEntities: true, // sudah cukup, jadi entitas otomatis ke-load
         };
       },
     }),
