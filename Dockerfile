@@ -5,8 +5,6 @@ WORKDIR /app
 
 # Salin package.json
 COPY package*.json ./
-
-# Install semua dependencies
 RUN npm install
 
 # Salin kode
@@ -20,5 +18,5 @@ RUN npm prune --production
 
 EXPOSE 3000
 
-# Jalankan dengan polyfill di-load pertama
-CMD ["node", "-r", "dist/polyfills", "dist/main"]
+# Jalankan aplikasi (polyfills sudah di-import di main.ts)
+CMD ["node", "dist/main"]
