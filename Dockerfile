@@ -1,23 +1,27 @@
 # Dockerfile
 FROM node:18-alpine
 
-# Buat folder app
+# Buat folder aplikasi
 WORKDIR /app
 
-# Salin package.json dulu (biar cache npm install lebih cepat)
+# Salin package.json & package-lock.json dulu
 COPY package*.json ./
 
-# Install dependencies
-RUN npm install
+# Install dependencies (production only)
+RUN npm ci --only=production && npm cache clean --force
 
-# Salin semua file source code
+# Salin source code (setelah node_modules di-ignore)
 COPY . .
 
-# Build aplikasi (opsional, jika pakai production build)
-# RUN npm run build
+# Build aplikasi (opsional, tapi direkomendasikan untuk production)
+# Hapus comment jika kamu pakai build
+RUN npm run build
 
-# Expose port 3000
+# Bersihkan dev dependencies (opsional)
+RUN npm ci --only=production
+
+# Expose port
 EXPOSE 3000
 
-# Jalankan aplikasi
-CMD ["npm", "run", "start"]
+# Jalankan aplikasi dari dist/main
+CMD ["node", "dist/main"]

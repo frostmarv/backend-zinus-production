@@ -1,27 +1,37 @@
-// src/app.module.ts
 import { Module } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import databaseConfig from './config/database.config';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { ProductionOrderModule } from './production-order/production-order.module';
 
 @Module({
   imports: [
-    // Setup database
-    TypeOrmModule.forRoot({
-      type: 'postgres',
-      url: process.env.DATABASE_URL,
-      entities: [__dirname + '/**/*.entity{.ts,.js}'],
-      synchronize: process.env.NODE_ENV !== 'production', // Hanya dev
-      ssl: {
-        rejectUnauthorized: false, // Wajib untuk Railway
-      },
+    ConfigModule.forRoot({
+      isGlobal: true,
+      load: [databaseConfig],
+      envFilePath: '.env',
     }),
-
-    // Daftarkan module produksi
-    ProductionOrderModule,
+    TypeOrmModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        type: 'postgres',
+        url: config.get<string>('database.url'),
+        host: config.get<string>('database.host'),
+        port: config.get<number>('database.port'),
+        username: config.get<string>('database.username'),
+        password: config.get<string>('database.password'),
+        database: config.get<string>('database.name'),
+        ssl: config.get<boolean>('database.ssl')
+          ? { rejectUnauthorized: false }
+          : false,
+        synchronize: config.get<boolean>('database.synchronize'),
+        logging: config.get<boolean>('database.logging'),
+        entities: [__dirname + '/modules/**/*.entity{.ts,.js}'],
+      }),
+    }),
   ],
-  controllers: [AppController], // Hanya AppController di sini
+  controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule {}
