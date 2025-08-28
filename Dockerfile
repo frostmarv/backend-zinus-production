@@ -6,20 +6,19 @@ WORKDIR /app
 # Salin package.json
 COPY package*.json ./
 
-# Install SEMUA dependencies (termasuk dev) untuk build
+# Install semua dependencies
 RUN npm install
 
-# Salin source code
+# Salin kode
 COPY . .
 
-# Build aplikasi (nest CLI sekarang tersedia)
+# Build aplikasi
 RUN npm run build
 
-# Setelah build, hapus devDependencies untuk hemat ukuran
+# Hapus devDependencies
 RUN npm prune --production
 
-# Expose port
 EXPOSE 3000
 
-# Jalankan dari dist
-CMD ["node", "dist/main"]
+# Jalankan dengan polyfill di-load pertama
+CMD ["node", "-r", "dist/polyfills", "dist/main"]
