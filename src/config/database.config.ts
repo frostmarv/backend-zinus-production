@@ -5,16 +5,16 @@ import { ConfigService } from '@nestjs/config';
 
 // 1. Config untuk NestJS ConfigModule
 export default registerAs('database', () => ({
-  url: process.env.DB_URL || null,
-  urlLocal: process.env.DB_URL_LOCAL || null,
-  host: process.env.DB_HOST || 'localhost',
-  port: parseInt(process.env.DB_PORT || '5432', 10),
-  username: process.env.DB_USERNAME || 'postgres',
-  password: process.env.DB_PASSWORD || 'postgres',
-  name: process.env.DB_NAME || 'postgres',
-  synchronize: process.env.DB_SYNC === 'true',
-  logging: process.env.DB_LOGGING === 'true',
-  ssl: process.env.DB_SSL === 'true',
+  url: process.env.DATABASE_URL || null,
+  urlLocal: process.env.DATABASE_URL || null,
+  host: process.env.PGHOST || 'helium',
+  port: parseInt(process.env.PGPORT || '5432', 10),
+  username: process.env.PGUSER || 'postgres',
+  password: process.env.PGPASSWORD || 'password',
+  name: process.env.PGDATABASE || 'heliumdb',
+  synchronize: true, // For development
+  logging: true, // For development
+  ssl: false, // Replit database doesn't need SSL in development
   nodeEnv: process.env.NODE_ENV || 'development',
 }));
 
