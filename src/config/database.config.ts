@@ -3,11 +3,9 @@ import { registerAs } from '@nestjs/config';
 
 export default registerAs('database', () => {
   const isProduction = process.env.NODE_ENV === 'production';
-  
-  // Use PostgreSQL if DATABASE_URL is available, otherwise fall back to SQLite
-  const usePostgres = process.env.DATABASE_URL || process.env.DB_TYPE === 'postgres';
+  const dbType = process.env.DB_TYPE || 'sqlite';
 
-  if (usePostgres) {
+  if (dbType === 'postgres') {
     return {
       type: 'postgres',
       url: process.env.DATABASE_URL,
@@ -17,17 +15,17 @@ export default registerAs('database', () => {
       password: process.env.PGPASSWORD || '',
       database: process.env.PGDATABASE || 'postgres',
       ssl: isProduction ? { rejectUnauthorized: false } : false,
-      synchronize: process.env.DB_SYNC === 'true' || process.env.NODE_ENV === 'development',
-      logging: process.env.DB_LOGGING === 'true' || process.env.NODE_ENV === 'development',
+      synchronize: process.env.DB_SYNC === 'true',
+      logging: process.env.DB_LOGGING === 'true',
     };
   }
 
-  // Fallback to SQLite for local development
+  // Untuk SQLite — HARUS punya `database`
   const sqlitePath = process.env.SQLITE_PATH || 'db.sqlite';
 
   return {
     type: 'sqlite',
-    database: sqlitePath,
+    database: sqlitePath, // ✅ Wajib!
     synchronize: process.env.DB_SYNC !== 'false',
     logging: process.env.DB_LOGGING === 'true',
   };

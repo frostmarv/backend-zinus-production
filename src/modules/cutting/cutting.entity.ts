@@ -6,7 +6,8 @@ import {
   CreateDateColumn,
   OneToMany,
 } from 'typeorm';
-import { BalokEntity } from './balok.entity'; // ← impor entity anak
+import { BalokEntity } from './balok.entity';
+import { ActualEntity } from './actual.entity';
 
 @Entity('cutting_records')
 export class CuttingRecord {
@@ -14,32 +15,42 @@ export class CuttingRecord {
   id: string;
 
   @Column()
-  timestamp: string;
+  productionDate: string; // ganti dari timestamp
 
   @Column()
   shift: string;
 
   @Column()
-  group: string;
-
-  @Column()
   machine: string;
 
   @Column()
-  timeSlot: string;
+  operator: string;
+
+  @Column()
+  time: string;
+
+  @Column('int')
+  noUrut: number;
 
   @Column({ nullable: true })
   week: string;
 
-  @OneToMany(() => BalokEntity, balok => balok.cuttingRecord, { cascade: true })
+  @OneToMany(() => BalokEntity, (balok) => balok.cuttingRecord, {
+    cascade: true,
+  })
   balok: BalokEntity[];
 
-  @Column({ type: 'jsonb', nullable: true })
+  @OneToMany(() => ActualEntity, (actual) => actual.cuttingRecord, {
+    cascade: true,
+  })
+  actuals: ActualEntity[];
+
+  @Column('json', { nullable: true })
   foamingDate: {
     isChecked: boolean;
-    tanggalSelesai?: string;
-    jam?: string;
-  } | null; // ← boleh null
+    tanggalSelesai: string;
+    jam: string;
+  } | null;
 
   @CreateDateColumn()
   createdAt: Date;
