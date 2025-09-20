@@ -1,5 +1,11 @@
 // src/modules/cutting/actual.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, ManyToOne } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { CuttingRecord } from './cutting.entity';
 
 @Entity('actual_data')
@@ -43,6 +49,9 @@ export class ActualEntity {
   @Column('text')
   descript!: 'FLAT' | 'HOLE';
 
-  @ManyToOne(() => CuttingRecord, (record) => record.actuals)
+  @ManyToOne(() => CuttingRecord, (record) => record.actuals, {
+    onDelete: 'CASCADE', // ✅ TAMBAHKAN INI
+  })
+  @JoinColumn({ name: 'cuttingRecordId' }) // ✅ TAMBAHKAN INI
   cuttingRecord!: CuttingRecord;
 }
