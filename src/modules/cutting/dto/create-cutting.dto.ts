@@ -12,13 +12,13 @@ import { Type } from 'class-transformer';
 
 // --- Actual DTO ---
 export class CreateActualDto {
-  @IsString()
+  @IsNumber()
   @IsNotEmpty()
-  density: string;
+  density: number;
 
-  @IsString()
+  @IsNumber()
   @IsNotEmpty()
-  ild: string;
+  ild: number;
 
   @IsString()
   @IsNotEmpty()
@@ -63,13 +63,13 @@ export class CreateActualDto {
 
 // --- Balok DTO ---
 export class CreateBalokDto {
-  @IsString()
+  @IsNumber()
   @IsNotEmpty()
-  density: string;
+  density: number;
 
-  @IsString()
+  @IsNumber()
   @IsNotEmpty()
-  ild: string;
+  ild: number;
 
   @IsString()
   @IsNotEmpty()
