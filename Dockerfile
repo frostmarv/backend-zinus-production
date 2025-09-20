@@ -1,22 +1,45 @@
-# Dockerfile
-FROM node:18
+# Multi-stage build for production
+FROM node:18-alpine AS builder
 
 WORKDIR /app
 
-# Salin package.json
+# Copy package files
 COPY package*.json ./
-RUN npm install
 
-# Salin kode
+# Install all dependencies (including dev)
+RUN npm ci
+
+# Copy source code
 COPY . .
 
-# Build aplikasi
+# Build the application
 RUN npm run build
 
-# Hapus devDependencies
-RUN npm prune --production
+# Production stage
+FROM node:18-alpine AS production
 
-EXPOSE 3000
+WORKDIR /app
 
-# Jalankan aplikasi (polyfills sudah di-import di main.ts)
+# Copy package files
+COPY package*.json ./
+
+# Install only production dependencies
+RUN npm ci --only=production && npm cache clean --force
+
+# Copy built application from builder stage
+COPY --from=builder /app/dist ./dist
+
+# Create non-root user for security
+RUN addgroup -g 1001 -S nodejs
+RUN adduser -S nestjs -u 1001
+USER nestjs
+
+# Expose port (Render uses PORT env variable)
+EXPOSE $PORT
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+  CMD node -e "require('http').get('http://localhost:' + (process.env.PORT || 5000) + '/health', (res) => { process.exit(res.statusCode === 200 ? 0 : 1) })"
+
+# Start the application
 CMD ["node", "dist/main"]

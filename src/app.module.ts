@@ -3,6 +3,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import databaseConfig from './config/database.config';
+import { validate } from './config/env.validation';
 
 // Modules
 import { AppController } from './app.controller';
@@ -12,11 +13,12 @@ import { CuttingModule } from './modules/cutting/cutting.module';
 
 @Module({
   imports: [
-    // Load config
+    // Load config with validation
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
       envFilePath: '.env',
+      validate,
     }),
 
     // Setup database

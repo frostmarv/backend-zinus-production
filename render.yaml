@@ -1,0 +1,26 @@
+services:
+  - type: web
+    name: backend-zinus-production
+    env: node
+    plan: free
+    buildCommand: npm ci && npm run build
+    startCommand: npm run start:prod
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DB_TYPE
+        value: postgres
+      - key: DB_SYNC
+        value: false
+      - key: DB_LOGGING
+        value: false
+      - key: PORT
+        value: 10000
+    autoDeploy: false
+
+databases:
+  - name: zinus-postgres
+    databaseName: zinus_production
+    user: zinus_user
+    plan: free

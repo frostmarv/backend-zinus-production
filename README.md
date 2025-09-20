@@ -23,7 +23,18 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Backend API untuk sistem produksi Zinus menggunakan NestJS framework. Aplikasi ini mengelola production orders, cutting records, dan proses manufaktur lainnya.
+
+## Features
+
+- 🏭 **Production Order Management** - Kelola pesanan produksi
+- ✂️ **Cutting Records** - Tracking proses cutting dengan detail balok dan actual data
+- 📊 **Health Monitoring** - Health check endpoint untuk monitoring
+- 🗄️ **Multi-Database Support** - SQLite (development) dan PostgreSQL (production)
+- 🔒 **Input Validation** - Comprehensive validation dengan class-validator
+- 📚 **API Documentation** - Swagger/OpenAPI documentation
+- 🐳 **Docker Ready** - Containerized deployment
+- ☁️ **Cloud Deploy Ready** - Optimized untuk Render.com
 
 ## Project setup
 
@@ -57,18 +68,94 @@ $ npm run test:e2e
 $ npm run test:cov
 ```
 
-## Deployment
+## API Endpoints
 
-When you're ready to deploy your NestJS application to production, there are some key steps you can take to ensure it runs as efficiently as possible. Check out the [deployment documentation](https://docs.nestjs.com/deployment) for more information.
+### Production Orders
+- `GET /api/orders` - Get all production orders
+- `POST /api/orders` - Create new production order
 
-If you are looking for a cloud-based platform to deploy your NestJS application, check out [Mau](https://mau.nestjs.com), our official platform for deploying NestJS applications on AWS. Mau makes deployment straightforward and fast, requiring just a few simple steps:
+### Cutting Records  
+- `GET /api/cutting` - Get all cutting records
+- `POST /api/cutting` - Create new cutting record
+- `GET /api/cutting/:id` - Get cutting record by ID
+- `PUT /api/cutting/:id` - Update cutting record
+- `DELETE /api/cutting/:id` - Delete cutting record
+
+### Health Check
+- `GET /health` - Application health status
+
+## Environment Configuration
+
+### 🚀 Quick Setup (Super Mudah!)
 
 ```bash
-$ npm install -g @nestjs/mau
-$ mau deploy
+# Development (SQLite)
+npm run env:dev && npm run start:dev
+
+# Local PostgreSQL
+npm run env:local-pg && npm run start:dev
+
+# Production setup
+npm run env:prod
+# Edit DATABASE_URL di .env, lalu:
+npm run start:prod
 ```
 
-With Mau, you can deploy your application in just a few clicks, allowing you to focus on building features rather than managing infrastructure.
+### 📁 Environment Files
+
+| Command | File | Database | Use Case |
+|---------|------|----------|----------|
+| `npm run env:dev` | `.env.development` | SQLite | Local development |
+| `npm run env:local-pg` | `.env.local-postgres` | PostgreSQL | Local testing |
+| `npm run env:prod` | `.env.production` | PostgreSQL | Production |
+| `npm run env:docker` | `.env.docker` | PostgreSQL | Docker deploy |
+
+### 🔧 Manual Configuration
+
+Edit `.env` file:
+```bash
+# Quick switch environments
+NODE_ENV=development              # development | production
+DB_TYPE=sqlite                   # sqlite | postgres
+
+# SQLite (Development)
+SQLITE_PATH=dev.sqlite
+
+# PostgreSQL (Production)
+DATABASE_URL=postgresql://user:pass@host:port/db
+
+# CORS
+ALLOWED_ORIGINS=http://localhost:3000
+```
+
+📖 **Panduan Lengkap**: [ENV_GUIDE.md](./ENV_GUIDE.md)
+
+## Deployment
+
+### 🚀 Quick Deploy ke Render.com
+
+**10 menit setup:**
+
+1. **Database**: New → PostgreSQL → Copy DATABASE_URL
+2. **Web Service**: Connect GitHub → Set environment variables
+3. **Done!** ✅
+
+📖 **Panduan Lengkap**: 
+- [RENDER_SETUP.md](./RENDER_SETUP.md) - Quick start (10 menit)
+- [DEPLOYMENT.md](./DEPLOYMENT.md) - Panduan detail
+
+### 🐳 Docker Deployment
+
+```bash
+# Build image
+docker build -t zinus-backend .
+
+# Run container
+docker run -p 5000:5000 \
+  -e NODE_ENV=production \
+  -e DATABASE_URL=postgresql://... \
+  zinus-backend
+```
 
 ## Resources
 
