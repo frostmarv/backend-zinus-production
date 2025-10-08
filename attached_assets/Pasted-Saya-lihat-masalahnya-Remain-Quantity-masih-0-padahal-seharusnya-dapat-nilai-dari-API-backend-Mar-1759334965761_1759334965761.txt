@@ -1,0 +1,58 @@
+Saya lihat masalahnya - Remain Quantity masih 0 padahal seharusnya dapat nilai dari API backend. Mari saya cek logs dan kode:
+
+Checked console logs
+
+Planned backend endpoint implementation (4 seconds)
+Saya sudah menemukan masalahnya! Dari logs terlihat:
+
+🔍 GET: /api/master-data/remain-quantity?customerPo=0879611929&sku=SPT-STR-800F&sCode=S.MB02.00176.00
+❌ API Error (masterData): {}
+Gagal memuat Remain Quantity: {}
+Frontend sudah bekerja dengan benar - API dipanggil saat S.CODE dipilih. ✅
+
+MASALAHNYA: Backend belum punya endpoint /api/master-data/remain-quantity ini! ❌
+
+🔧 SOLUSI - Implement di Backend
+Anda perlu tambahkan endpoint baru di backend controller:
+
+// Di master-data.controller.js atau sejenisnya
+// GET /api/master-data/remain-quantity
+async getRemainQuantity(req, res) {
+  const { customerPo, sku, sCode } = req.query;
+  
+  try {
+    // 1. Get quantityOrder dari master data
+    const masterData = await db.query(
+      'SELECT quantity_order FROM master_data WHERE customer_po = ? AND sku = ?',
+      [customerPo, sku]
+    );
+    const quantityOrder = masterData[0]?.quantity_order || 0;
+    
+    // 2. Hitung total produksi actual dari database untuk layer ini
+    const result = await db.query(
+      'SELECT SUM(quantity_produksi) as total FROM production_cutting_entries WHERE customer_po = ? AND sku = ? AND s_code = ?',
+      [customerPo, sku, sCode]
+    );
+    const totalProduced = result[0]?.total || 0;
+    
+    // 3. Hitung remain
+    const remainQuantity = quantityOrder - totalProduced;
+    
+    return res.json({
+      quantityOrder,
+      totalProduced,
+      remainQuantity
+    });
+  } catch (error) {
+    console.error('Error getting remain quantity:', error);
+    return res.status(500).json({ error: 'Failed to get remain quantity' });
+  }
+}
+Tambahkan route:
+
+router.get('/master-data/remain-quantity', masterDataController.getRemainQuantity);
+📋 Test Setelah Backend Siap:
+Pilih Customer → PO → Customer PO → SKU
+Pilih S.CODE
+Remain Quantity akan otomatis muncul dari database ✅
+Setelah backend implement endpoint ini, semua akan berfungsi! Frontend sudah siap 100%. 🎉

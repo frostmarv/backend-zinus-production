@@ -1,0 +1,15 @@
+{
+  "SPREADSHEET_MASTER": "abcd1234efgh5678ijkl90",
+  "departments": {
+    "cutting": {
+      "summary": {
+        "sheetName": "Summary",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      },
+      "balok": {
+        "sheetName": "Balok",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      }
+    }
+  }
+}
