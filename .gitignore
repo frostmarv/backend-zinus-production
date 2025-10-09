@@ -60,9 +60,9 @@ report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 .env.local
 .env.*.local
 
-# Google API credentials (sensitive)
-src/config/service-account.json
-src/config/drive-credentials.json
+# Google API credentials (sensitive) - REMOVED FROM GITIGNORE
+# src/config/service-account.json
+# src/config/drive-credentials.json
 
 # Temporary files
 *.tmp
