@@ -47,7 +47,7 @@ async function bootstrap() {
     'http://127.0.0.1:5000',
     'http://localhost:5000',
     'https://3000-firebase-zinus-production-app-1759506951245.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev',
-    'https://44117-firebase-zinus-production-app-1759506951245.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev',
+    'https://zinus-production-web.vercel.app',
     `https://${replitDevDomain}`,
   ];
 
