@@ -18,6 +18,12 @@ import { ProductionPlanningModule } from './modules/production-planning/producti
 import { AssemblyLayersModule } from './modules/assembly-layers/assembly-layers.module';
 import { WorkableBondingModule } from './modules/workable-bonding/workable-bonding.module';
 import { BondingModule } from './modules/bonding/bonding.module';
+import { BondingRejectModule } from './modules/bonding-reject/bonding-reject.module';
+import { ReplacementModule } from './modules/replacement/replacement.module';
+import { CuttingReplacementModule } from './modules/cutting-replacement/cutting-replacement.module';
+import { NotificationModule } from './modules/notification/notification.module';
+import { DocumentController } from './routes/document.controller';
+import { GoogleDriveService } from './services/google-drive.service';
 
 @Module({
   imports: [
@@ -66,8 +72,14 @@ import { BondingModule } from './modules/bonding/bonding.module';
     AssemblyLayersModule,
     WorkableBondingModule,
     BondingModule,
+    
+    // New modules for bonding NG workflow
+    BondingRejectModule,
+    ReplacementModule,
+    CuttingReplacementModule,
+    NotificationModule,
   ],
-  controllers: [AppController],
-  providers: [AppService],
+  controllers: [AppController, DocumentController],
+  providers: [AppService, GoogleDriveService],
 })
 export class AppModule {}

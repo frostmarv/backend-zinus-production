@@ -14,30 +14,22 @@ export class GoogleSheetsService {
   private auth: Auth.JWT;
   private readonly logger = new Logger(GoogleSheetsService.name);
 
-  // ✅ Konfigurasi internal
-  private readonly config = {
-    departments: {
-      cutting: {
-        summary: {
-          spreadsheetId: '1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0',
-          sheetName: 'Summary',
-        },
-        balok: {
-          spreadsheetId: '1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0',
-          sheetName: 'Balok',
-        },
-      },
-      bonding: {
-        summary: {
-          spreadsheetId: '1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0', // TODO: Ganti dengan spreadsheet ID bonding
-          sheetName: 'Bonding Summary',
-        },
-      },
-      // tambahkan assembly, packing, dll nanti
-    },
-  };
+  // ✅ Load config dari file
+  private config: any;
+
+  private loadConfig() {
+    const configPath = path.join(__dirname, '../config/sheet-config.json');
+    try {
+      this.config = JSON.parse(fs.readFileSync(configPath, 'utf8'));
+      this.logger.log('✅ Sheet configuration loaded');
+    } catch (error) {
+      this.logger.error('❌ Failed to load sheet-config.json:', error.message);
+      this.config = { departments: {} };
+    }
+  }
 
   constructor() {
+    this.loadConfig();
     this.initializeAuth();
   }
 

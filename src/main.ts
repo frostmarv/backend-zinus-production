@@ -10,6 +10,7 @@ import { AppModule } from './app.module';
 import { ValidationPipe, RequestMethod } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConfigHelper } from './config/config.helper';
+import { AllExceptionsFilter } from './filters/http-exception.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -38,6 +39,9 @@ async function bootstrap() {
       forbidNonWhitelisted: true,
     }),
   );
+
+  // ✅ Enable global exception filter
+  app.useGlobalFilters(new AllExceptionsFilter());
 
   // ✅ Enable CORS (for Replit or custom origins)
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';

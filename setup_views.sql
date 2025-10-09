@@ -176,6 +176,30 @@ bonding_actuals AS (
   GROUP BY bs.customer_po, bs.sku
 ),
 
+ng_totals AS (
+  -- Calculate total NG (reject) per SKU
+  SELECT 
+    br.customer_po AS customerPO,
+    br.sku,
+    SUM(br.ng_quantity) AS ng_qty
+  FROM bonding_reject br
+  WHERE br.status != 'CANCELLED'
+  GROUP BY br.customer_po, br.sku
+),
+
+replacement_totals AS (
+  -- Calculate total replacement yang sudah diproses dari cutting
+  SELECT 
+    br.customer_po AS customerPO,
+    br.sku,
+    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+  FROM bonding_reject br
+  LEFT JOIN replacement_progress rp ON br.id = rp.bonding_reject_id
+  WHERE br.status != 'CANCELLED'
+    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
+  GROUP BY br.customer_po, br.sku
+),
+
 workable_check AS (
   SELECT 
     ls.customerPO,
@@ -187,15 +211,21 @@ workable_check AS (
     COALESCE(MIN(ls.actual_qty), 0) AS workable,
     -- Bonding = total yang sudah diproduksi di bonding
     COALESCE(ba.bonding_qty, 0) AS bonding,
-    -- Remain = workable - bonding (sisa material yang bisa dikerjakan bonding)
-    COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) AS remain,
+    -- NG = total reject dari bonding
+    COALESCE(ng.ng_qty, 0) AS ng,
+    -- Replacement = total yang sudah diganti dari cutting
+    COALESCE(rt.replacement_qty, 0) AS replacement,
+    -- NG Active = NG yang belum diganti (ng - replacement)
+    COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0) AS ng_active,
+    -- Remain = workable - bonding - ng_active (sisa material yang bisa dikerjakan bonding)
+    COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0)) AS remain,
     CASE 
-      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0)) <= 0 THEN 'Completed'
+      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0))) <= 0 THEN 'Completed'
       WHEN COALESCE(MIN(ls.actual_qty), 0) < MAX(ls.quantityOrder) THEN 'Running'
       ELSE 'Not Started'
     END AS status,
     CASE 
-      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0)) <= 0 THEN 'Bonding completed'
+      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0))) <= 0 THEN 'Bonding completed'
       WHEN COALESCE(MIN(ls.actual_qty), 0) < MAX(ls.quantityOrder) THEN 'Cutting in progress'
       ELSE 'Waiting for cutting'
     END AS remarks
@@ -203,7 +233,13 @@ workable_check AS (
   LEFT JOIN bonding_actuals ba 
     ON ls.customerPO = ba.customerPO 
     AND ls.sku = ba.sku
-  GROUP BY ls.customerPO, ls.shipToName, ls.sku, ls.week, ba.bonding_qty
+  LEFT JOIN ng_totals ng
+    ON ls.customerPO = ng.customerPO
+    AND ls.sku = ng.sku
+  LEFT JOIN replacement_totals rt
+    ON ls.customerPO = rt.customerPO
+    AND ls.sku = rt.sku
+  GROUP BY ls.customerPO, ls.shipToName, ls.sku, ls.week, ba.bonding_qty, ng.ng_qty, rt.replacement_qty
 )
 
 SELECT 
@@ -213,6 +249,9 @@ SELECT
   quantityOrder,
   workable,
   bonding,
+  ng,
+  replacement,
+  ng_active,
   remain,
   remarks,
   status
@@ -296,6 +335,30 @@ bonding_actuals AS (
   GROUP BY bs.customer_po, bs.sku
 ),
 
+ng_totals AS (
+  -- Calculate total NG (reject) per SKU
+  SELECT 
+    br.customer_po AS customerPO,
+    br.sku,
+    SUM(br.ng_quantity) AS ng_qty
+  FROM bonding_reject br
+  WHERE br.status != 'CANCELLED'
+  GROUP BY br.customer_po, br.sku
+),
+
+replacement_totals AS (
+  -- Calculate total replacement yang sudah diproses dari cutting
+  SELECT 
+    br.customer_po AS customerPO,
+    br.sku,
+    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+  FROM bonding_reject br
+  LEFT JOIN replacement_progress rp ON br.id = rp.bonding_reject_id
+  WHERE br.status != 'CANCELLED'
+    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
+  GROUP BY br.customer_po, br.sku
+),
+
 pivot_data AS (
   SELECT 
     ld.customerPO,
@@ -309,12 +372,20 @@ pivot_data AS (
     MAX(CASE WHEN ld.layer_index = 4 THEN ld.actual_qty END) AS "Layer 4",
     MAX(CASE WHEN ld.layer_index = 5 THEN ld.actual_qty END) AS "Hole",
     COALESCE(MIN(ld.actual_qty), 0) AS workable,
-    COALESCE(ba.bonding_qty, 0) AS bonding
+    COALESCE(ba.bonding_qty, 0) AS bonding,
+    COALESCE(ng.ng_qty, 0) AS ng,
+    COALESCE(rt.replacement_qty, 0) AS replacement
   FROM layer_data ld
   LEFT JOIN bonding_actuals ba 
     ON ld.customerPO = ba.customerPO 
     AND ld.sku = ba.sku
-  GROUP BY ld.customerPO, ld.shipToName, ld.sku, ld.week, ba.bonding_qty
+  LEFT JOIN ng_totals ng
+    ON ld.customerPO = ng.customerPO
+    AND ld.sku = ng.sku
+  LEFT JOIN replacement_totals rt
+    ON ld.customerPO = rt.customerPO
+    AND ld.sku = rt.sku
+  GROUP BY ld.customerPO, ld.shipToName, ld.sku, ld.week, ba.bonding_qty, ng.ng_qty, rt.replacement_qty
 )
 
 SELECT 
@@ -330,14 +401,17 @@ SELECT
   COALESCE("Hole", 0) AS "Hole",
   workable,
   bonding,
-  workable - bonding AS remain,
+  ng,
+  replacement,
+  ng - replacement AS ng_active,
+  workable - bonding - (ng - replacement) AS remain,
   CASE 
-    WHEN (workable - bonding) <= 0 THEN 'Completed'
+    WHEN (workable - bonding - (ng - replacement)) <= 0 THEN 'Completed'
     WHEN workable < quantityOrder THEN 'Running'
     ELSE 'Not Started'
   END AS status,
   CASE 
-    WHEN (workable - bonding) <= 0 THEN 'Bonding completed'
+    WHEN (workable - bonding - (ng - replacement)) <= 0 THEN 'Bonding completed'
     WHEN workable < quantityOrder THEN 'Cutting in progress'
     ELSE 'Waiting for cutting'
   END AS remarks
