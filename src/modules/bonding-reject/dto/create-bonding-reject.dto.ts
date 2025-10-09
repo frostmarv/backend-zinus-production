@@ -1,22 +1,38 @@
-import { IsEnum, IsNotEmpty, IsNumber, IsString, Min, IsOptional } from 'class-validator';
-import { ShiftType, GroupType } from '../entities/bonding-reject.entity';
+// src/modules/bonding-reject/dto/create-bonding-reject.dto.ts
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsString,
+  Min,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 
 export class CreateBondingRejectDto {
-  @IsEnum(ShiftType)
+  @IsString()
   @IsNotEmpty()
-  shift: ShiftType;
+  timestamp: string; // ISO string dari frontend, akan di-parse jadi Date di service
 
-  @IsEnum(GroupType)
+  // ✅ Shift dikirim sebagai '1' atau '2'
+  @IsString()
   @IsNotEmpty()
-  group: GroupType;
+  shift: string;
+
+  // ✅ Group dikirim sebagai 'A' atau 'B'
+  @IsString()
+  @IsNotEmpty()
+  group: string;
 
   @IsString()
   @IsNotEmpty()
   timeSlot: string;
 
-  @IsString()
-  @IsOptional()
-  machine?: string;
+  // ❌ HAPUS machine — tidak dikirim dari form
+  // @IsString()
+  // @IsOptional()
+  // machine?: string;
 
   @IsString()
   @IsNotEmpty()
@@ -34,9 +50,10 @@ export class CreateBondingRejectDto {
   @IsNotEmpty()
   poNumber: string;
 
-  @IsString()
-  @IsNotEmpty()
-  customerPo: string;
+  // ❌ HAPUS customerPo — tidak dikirim dari form
+  // @IsString()
+  // @IsNotEmpty()
+  // customerPo: string;
 
   @IsString()
   @IsNotEmpty()
@@ -53,4 +70,10 @@ export class CreateBondingRejectDto {
   @IsString()
   @IsNotEmpty()
   reason: string;
+
+  // ✅ Opsional: terima gambar dalam bentuk base64 array
+  @IsArray()
+  @IsOptional()
+  @IsString({ each: true })
+  images?: string[];
 }

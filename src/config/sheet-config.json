@@ -14,11 +14,11 @@
     "bonding": {
       "ng_log": {
         "sheetName": "NG Log",
-        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+        "spreadsheetId": "1_4Qyf-aBCXfBvPL5YUm4g0AflHjEFmpXmIcmxb7WCgs"
       },
       "summary": {
-        "sheetName": "Bonding Summary",
-        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+        "sheetName": "summary",
+        "spreadsheetId": "1_4Qyf-aBCXfBvPL5YUm4g0AflHjEFmpXmIcmxb7WCgs"
       }
     },
     "replacement": {

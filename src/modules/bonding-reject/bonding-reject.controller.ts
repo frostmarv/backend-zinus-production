@@ -1,3 +1,4 @@
+// src/modules/bonding-reject/bonding-reject.controller.ts
 import {
   Controller,
   Get,
@@ -11,13 +12,7 @@ import {
   HttpStatus,
   ValidationPipe,
   UsePipes,
-  UseInterceptors,
-  UploadedFiles,
 } from '@nestjs/common';
-import { FilesInterceptor } from '@nestjs/platform-express';
-import * as multer from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
 import { BondingRejectService } from './bonding-reject.service';
 import { CreateBondingRejectDto } from './dto/create-bonding-reject.dto';
 import { UpdateBondingRejectDto } from './dto/update-bonding-reject.dto';
@@ -26,8 +21,8 @@ import { ReplacementService } from '../replacement/replacement.service';
 import { NotificationService } from '../notification/notification.service';
 import { DepartmentType } from '../replacement/entities/replacement-progress.entity';
 import { GoogleSheetsService } from '../../services/google-sheets.service';
-import { GoogleDriveService } from '../../services/google-drive.service';
 import { Logger } from '@nestjs/common';
+import { v4 as uuidv4 } from 'uuid';
 
 @Controller('bonding/reject')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -39,14 +34,19 @@ export class BondingRejectController {
     private readonly replacementService: ReplacementService,
     private readonly notificationService: NotificationService,
     private readonly googleSheetsService: GoogleSheetsService,
-    private readonly googleDriveService: GoogleDriveService,
   ) {}
 
   @Post('form-input')
   @HttpCode(HttpStatus.CREATED)
   async createReject(@Body() createDto: CreateBondingRejectDto) {
+    // ✅ Generate batchNumber otomatis di backend
+    const batchNumber = `BR-${new Date().toISOString().slice(0, 10).replace(/-/g, '')}-${uuidv4().substring(0, 6).toUpperCase()}`;
+
     // 1. Create bonding reject record
-    const bondingReject = await this.bondingRejectService.create(createDto);
+    const bondingReject = await this.bondingRejectService.create({
+      ...createDto,
+      batchNumber, // Tambahkan batchNumber yang digenerate
+    });
 
     // 2. Auto-create replacement request
     const replacement = await this.replacementService.createRequest({
@@ -84,7 +84,8 @@ export class BondingRejectController {
 
     return {
       success: true,
-      message: 'Bonding reject record created and replacement request initiated',
+      message:
+        'Bonding reject record created and replacement request initiated',
       data: {
         bondingReject,
         replacement,
@@ -101,28 +102,32 @@ export class BondingRejectController {
       await this.googleSheetsService.appendToDepartmentSheet(
         'bonding',
         'ng_log',
-        [[
-          bondingReject.batchNumber,
-          bondingReject.timestamp.toISOString(),
-          bondingReject.shift,
-          bondingReject.group,
-          bondingReject.timeSlot,
-          bondingReject.machine,
-          bondingReject.kashift,
-          bondingReject.admin,
-          bondingReject.customer,
-          bondingReject.poNumber,
-          bondingReject.customerPo,
-          bondingReject.sku,
-          bondingReject.sCode,
-          bondingReject.ngQuantity,
-          bondingReject.reason,
-          bondingReject.status,
-        ]],
+        [
+          [
+            bondingReject.batchNumber,
+            bondingReject.timestamp.toISOString(),
+            bondingReject.shift,
+            bondingReject.group,
+            bondingReject.timeSlot,
+            // ❌ HAPUS machine
+            bondingReject.kashift,
+            bondingReject.admin,
+            bondingReject.customer,
+            bondingReject.poNumber,
+            // ❌ HAPUS customerPo
+            bondingReject.sku,
+            bondingReject.sCode,
+            bondingReject.ngQuantity,
+            bondingReject.reason,
+            bondingReject.status,
+            // ✅ Tambahkan kolom untuk gambar jika perlu (opsional)
+          ],
+        ],
       );
-      this.logger.log(`✅ Logged to Google Sheets: ${bondingReject.batchNumber}`);
+      this.logger.log(
+        `✅ Logged to Google Sheets: ${bondingReject.batchNumber}`,
+      );
     } catch (error) {
-      // Just log error, don't throw
       this.logger.warn(`⚠️ Google Sheets logging failed: ${error.message}`);
     }
   }
@@ -206,90 +211,9 @@ export class BondingRejectController {
     await this.bondingRejectService.remove(id);
   }
 
-  @Post(':id/upload-images')
-  @UseInterceptors(
-    FilesInterceptor('images', 10, {
-      storage: multer.diskStorage({
-        destination: (req, file, cb) => {
-          const uploadPath = './uploads/bonding-reject';
-          if (!fs.existsSync(uploadPath)) {
-            fs.mkdirSync(uploadPath, { recursive: true });
-          }
-          cb(null, uploadPath);
-        },
-        filename: (req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-          const ext = path.extname(file.originalname);
-          cb(null, `${uniqueSuffix}${ext}`);
-        },
-      }),
-      fileFilter: (req, file, cb) => {
-        const allowedMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif'];
-        if (allowedMimes.includes(file.mimetype)) {
-          cb(null, true);
-        } else {
-          cb(new Error('Invalid file type. Only JPEG, PNG and GIF are allowed'), false);
-        }
-      },
-    }),
-  )
-  async uploadImages(
-    @Param('id') id: string,
-    @UploadedFiles() files: Express.Multer.File[],
-  ) {
-    // Verify bonding reject exists and get batch number
-    const bondingReject = await this.bondingRejectService.findOne(id);
-
-    if (!files || files.length === 0) {
-      return {
-        success: false,
-        message: 'No images uploaded',
-      };
-    }
-
-    this.logger.log(`Uploading ${files.length} images for bonding reject ${id} (${bondingReject.batchNumber})`);
-
-    try {
-      // Upload to Google Drive with auto folder structure
-      const driveResults = await this.googleDriveService.uploadBondingRejectImages(
-        bondingReject.batchNumber,
-        files,
-      );
-
-      this.logger.log(`✅ Successfully uploaded ${files.length} images to Google Drive`);
-
-      return {
-        success: true,
-        message: `${files.length} images uploaded successfully to Google Drive`,
-        data: {
-          bondingRejectId: id,
-          batchNumber: bondingReject.batchNumber,
-          files: driveResults,
-        },
-      };
-    } catch (error) {
-      this.logger.error(`❌ Failed to upload to Google Drive: ${error.message}`);
-      
-      // Fallback: return local file info
-      const localFiles = files.map((file) => ({
-        filename: file.filename,
-        originalname: file.originalname,
-        path: file.path,
-        size: file.size,
-        mimetype: file.mimetype,
-      }));
-
-      return {
-        success: false,
-        message: `Failed to upload to Google Drive: ${error.message}`,
-        data: {
-          bondingRejectId: id,
-          batchNumber: bondingReject.batchNumber,
-          files: localFiles,
-        },
-      };
-    }
-  }
+  // ❌ HAPUS method uploadImages jika tidak dipakai
+  // Karena sekarang gambar dikirim via base64 di form-input
+  // Jika tetap ingin pakai multipart, pertahankan — tapi sesuaikan dengan DTO
 
   @Post('export-to-sheets')
   @HttpCode(HttpStatus.OK)
@@ -324,12 +248,12 @@ export class BondingRejectController {
       record.shift,
       record.group,
       record.timeSlot,
-      record.machine,
+      // ❌ HAPUS machine
       record.kashift,
       record.admin,
       record.customer,
       record.poNumber,
-      record.customerPo,
+      // ❌ HAPUS customerPo
       record.sku,
       record.sCode,
       record.ngQuantity,

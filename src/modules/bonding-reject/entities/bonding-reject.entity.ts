@@ -1,3 +1,4 @@
+// src/modules/bonding-reject/entities/bonding-reject.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -14,39 +15,29 @@ export enum BondingRejectStatus {
   CANCELLED = 'CANCELLED',
 }
 
-export enum ShiftType {
-  A = 'A',
-  B = 'B',
-}
-
-export enum GroupType {
-  A = 'A',
-  B = 'B',
-}
-
 @Entity('bonding_reject')
 export class BondingReject {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'batch_number', unique: true })
-  batchNumber: string;
+  // ❌ HAPUS batchNumber karena tidak dikirim dari form
+  // Jika tetap butuh, generate otomatis di backend (misal: BR-{timestamp}-{id})
 
   @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 
-  // ✅ Ganti dari 'enum' → 'varchar'
   @Column({ type: 'varchar' })
-  shift: ShiftType;
+  shift: string; // ✅ Sesuai form (kirim string '1' atau '2')
 
   @Column({ type: 'varchar' })
-  group: GroupType;
+  group: string; // ✅ Sesuai form ('A' atau 'B')
 
   @Column({ name: 'time_slot' })
   timeSlot: string;
 
-  @Column({ nullable: true })
-  machine: string;
+  // ❌ HAPUS machine karena sudah dihapus di form
+  // @Column({ nullable: true })
+  // machine: string;
 
   @Column()
   kashift: string;
@@ -60,8 +51,9 @@ export class BondingReject {
   @Column({ name: 'po_number' })
   poNumber: string;
 
-  @Column({ name: 'customer_po' })
-  customerPo: string;
+  // ❌ HAPUS customerPo karena sudah dihapus di form
+  // @Column({ name: 'customer_po' })
+  // customerPo: string;
 
   @Column()
   sku: string;
@@ -75,7 +67,10 @@ export class BondingReject {
   @Column({ type: 'text' })
   reason: string;
 
-  // ✅ Ganti dari 'enum' → 'varchar'
+  // ✅ Tambahkan field untuk menyimpan gambar (opsional)
+  @Column({ type: 'simple-array', nullable: true })
+  images?: string[]; // Simpan array path file atau base64 (tergantung implementasi)
+
   @Column({
     type: 'varchar',
     default: BondingRejectStatus.PENDING,
