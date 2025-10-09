@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import {
   BondingReject,
   BondingRejectStatus,
+  ImageMetadata,
 } from './entities/bonding-reject.entity';
 import { CreateBondingRejectDto } from './dto/create-bonding-reject.dto';
 import { UpdateBondingRejectDto } from './dto/update-bonding-reject.dto';
@@ -151,6 +152,24 @@ export class BondingRejectService {
 
     const updated = await this.bondingRejectRepository.save(bondingReject);
     this.logger.log(`Updated bonding reject ${id} status to ${status}`);
+
+    return updated;
+  }
+
+  /**
+   * Add image metadata to bonding reject record
+   */
+  async addImages(id: string, images: ImageMetadata[]): Promise<BondingReject> {
+    const bondingReject = await this.findOne(id);
+
+    if (!bondingReject.images) {
+      bondingReject.images = [];
+    }
+
+    bondingReject.images.push(...images);
+
+    const updated = await this.bondingRejectRepository.save(bondingReject);
+    this.logger.log(`Added ${images.length} images to bonding reject ${id}`);
 
     return updated;
   }

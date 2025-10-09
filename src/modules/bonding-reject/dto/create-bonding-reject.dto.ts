@@ -71,9 +71,9 @@ export class CreateBondingRejectDto {
   @IsNotEmpty()
   reason: string;
 
-  // ✅ Opsional: terima gambar dalam bentuk base64 array
-  @IsArray()
-  @IsOptional()
-  @IsString({ each: true })
-  images?: string[];
+  // ❌ HAPUS images — tidak lagi dikirim di form input
+  // @IsArray()
+  // @IsOptional()
+  // @IsString({ each: true })
+  // images?: string[];
 }

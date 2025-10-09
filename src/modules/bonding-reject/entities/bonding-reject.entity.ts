@@ -15,6 +15,15 @@ export enum BondingRejectStatus {
   CANCELLED = 'CANCELLED',
 }
 
+// Interface untuk struktur gambar (opsional, bisa juga pakai JSON)
+export interface ImageMetadata {
+  filename: string;
+  driveFileId: string;
+  driveLink: string;
+  size: number; // dalam bytes
+  uploadedAt: Date;
+}
+
 @Entity('bonding_reject')
 export class BondingReject {
   @PrimaryGeneratedColumn('uuid')
@@ -67,9 +76,9 @@ export class BondingReject {
   @Column({ type: 'text' })
   reason: string;
 
-  // ✅ Tambahkan field untuk menyimpan gambar (opsional)
-  @Column({ type: 'simple-array', nullable: true })
-  images?: string[]; // Simpan array path file atau base64 (tergantung implementasi)
+  // ✅ Update field images: simpan array metadata dari Google Drive
+  @Column({ type: 'json', nullable: true })
+  images?: ImageMetadata[]; // Array dari metadata gambar di Google Drive
 
   @Column({
     type: 'varchar',
