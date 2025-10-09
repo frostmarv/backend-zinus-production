@@ -9,10 +9,10 @@ import {
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { GoogleDriveService } from '../services/google-drive.service';
 import { generateDocNumber } from '../utils/document-control.util';
-import * as dayjs from 'dayjs';
-import * as multer from 'multer';
-import * as path from 'path';
-import * as fs from 'fs';
+import dayjs from 'dayjs';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs';
 
 @Controller('documents')
 export class DocumentController {
@@ -24,7 +24,8 @@ export class DocumentController {
       storage: multer.diskStorage({
         destination: './uploads',
         filename: (req, file, cb) => {
-          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          const uniqueSuffix =
+            Date.now() + '-' + Math.round(Math.random() * 1e9);
           cb(null, uniqueSuffix + '-' + file.originalname);
         },
       }),
@@ -54,8 +55,14 @@ export class DocumentController {
 
     // Struktur folder: category/year/month
     const categoryFolder = await this.driveService.createFolder(category);
-    const yearFolder = await this.driveService.createFolder(year, categoryFolder.id);
-    const monthFolder = await this.driveService.createFolder(month, yearFolder.id);
+    const yearFolder = await this.driveService.createFolder(
+      year,
+      categoryFolder.id,
+    );
+    const monthFolder = await this.driveService.createFolder(
+      month,
+      yearFolder.id,
+    );
 
     const uploadResults = [];
     for (const file of files) {

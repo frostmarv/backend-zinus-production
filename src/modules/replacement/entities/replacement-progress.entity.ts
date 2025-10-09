@@ -27,10 +27,11 @@ export class ReplacementProgress {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column({ name: 'source_dept', type: 'enum', enum: DepartmentType })
+  // ✅ Ganti 'enum' → 'varchar'
+  @Column({ name: 'source_dept', type: 'varchar' })
   sourceDept: DepartmentType;
 
-  @Column({ name: 'target_dept', type: 'enum', enum: DepartmentType })
+  @Column({ name: 'target_dept', type: 'varchar' })
   targetDept: DepartmentType;
 
   @Column({ name: 'source_batch_number' })
@@ -42,9 +43,9 @@ export class ReplacementProgress {
   @Column({ name: 'processed_qty', type: 'int', default: 0 })
   processedQty: number;
 
+  // ✅ Ganti 'enum' → 'varchar'
   @Column({
-    type: 'enum',
-    enum: ReplacementStatus,
+    type: 'varchar',
     default: ReplacementStatus.PENDING,
   })
   status: ReplacementStatus;

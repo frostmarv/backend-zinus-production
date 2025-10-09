@@ -38,9 +38,9 @@ export class Notification {
   })
   recipientRoles: NotificationRecipientRole[];
 
+  // ✅ Ganti 'enum' → 'varchar'
   @Column({
-    type: 'enum',
-    enum: NotificationType,
+    type: 'varchar',
     default: NotificationType.INFO,
   })
   type: NotificationType;
@@ -57,7 +57,8 @@ export class Notification {
   @Column({ name: 'related_entity_id', nullable: true })
   relatedEntityId: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  // ✅ Ganti 'timestamp' → 'datetime'
+  @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 
   @CreateDateColumn({ name: 'created_at' })

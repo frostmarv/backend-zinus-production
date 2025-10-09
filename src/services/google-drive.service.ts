@@ -1,8 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { getDriveService } from '../config/googleDrive.config';
-import * as fs from 'fs';
-import * as path from 'path';
-import * as dayjs from 'dayjs';
+import fs from 'fs';
+import path from 'path';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class GoogleDriveService {
@@ -87,7 +87,10 @@ export class GoogleDriveService {
   /**
    * Find folder by name in parent folder
    */
-  async findFolder(folderName: string, parentId: string): Promise<string | null> {
+  async findFolder(
+    folderName: string,
+    parentId: string,
+  ): Promise<string | null> {
     const drive = await getDriveService();
 
     const response = await drive.files.list({
@@ -106,10 +109,13 @@ export class GoogleDriveService {
   /**
    * Get or create folder (if not exists)
    */
-  async getOrCreateFolder(folderName: string, parentId: string): Promise<string> {
+  async getOrCreateFolder(
+    folderName: string,
+    parentId: string,
+  ): Promise<string> {
     // Try to find existing folder
     const existingFolderId = await this.findFolder(folderName, parentId);
-    
+
     if (existingFolderId) {
       this.logger.log(`📁 Found existing folder: ${folderName}`);
       return existingFolderId;
@@ -134,12 +140,23 @@ export class GoogleDriveService {
       const month = dayjs().format('MM');
 
       // Create folder structure: Bonding-Reject/YYYY/MM/batch-number
-      const bondingRejectFolder = await this.getOrCreateFolder('Bonding-Reject', this.ROOT_FOLDER_ID);
-      const yearFolder = await this.getOrCreateFolder(year, bondingRejectFolder);
+      const bondingRejectFolder = await this.getOrCreateFolder(
+        'Bonding-Reject',
+        this.ROOT_FOLDER_ID,
+      );
+      const yearFolder = await this.getOrCreateFolder(
+        year,
+        bondingRejectFolder,
+      );
       const monthFolder = await this.getOrCreateFolder(month, yearFolder);
-      const batchFolder = await this.getOrCreateFolder(batchNumber, monthFolder);
+      const batchFolder = await this.getOrCreateFolder(
+        batchNumber,
+        monthFolder,
+      );
 
-      this.logger.log(`📁 Folder structure ready: Bonding-Reject/${year}/${month}/${batchNumber}`);
+      this.logger.log(
+        `📁 Folder structure ready: Bonding-Reject/${year}/${month}/${batchNumber}`,
+      );
 
       // Upload all files
       const uploadResults = [];
@@ -166,7 +183,9 @@ export class GoogleDriveService {
 
       return uploadResults;
     } catch (error) {
-      this.logger.error(`❌ Failed to upload images to Google Drive: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to upload images to Google Drive: ${error.message}`,
+      );
       throw error;
     }
   }

@@ -31,9 +31,9 @@ export class CuttingProcess {
   @Column({ name: 'processed_qty', type: 'int', default: 0 })
   processedQty: number;
 
+  // ✅ Ganti 'enum' → 'varchar'
   @Column({
-    type: 'enum',
-    enum: CuttingProcessStatus,
+    type: 'varchar',
     default: CuttingProcessStatus.PENDING,
   })
   status: CuttingProcessStatus;
@@ -47,10 +47,11 @@ export class CuttingProcess {
   @Column({ name: 'machine_id', nullable: true })
   machineId: string;
 
-  @Column({ name: 'started_at', type: 'timestamp', nullable: true })
+  // ✅ Ganti 'timestamp' → 'datetime'
+  @Column({ name: 'started_at', type: 'datetime', nullable: true })
   startedAt: Date;
 
-  @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
+  @Column({ name: 'completed_at', type: 'datetime', nullable: true })
   completedAt: Date;
 
   @CreateDateColumn({ name: 'created_at' })

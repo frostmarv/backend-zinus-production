@@ -32,13 +32,14 @@ export class BondingReject {
   @Column({ name: 'batch_number', unique: true })
   batchNumber: string;
 
-  @Column({ type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 
-  @Column({ type: 'enum', enum: ShiftType })
+  // ✅ Ganti dari 'enum' → 'varchar'
+  @Column({ type: 'varchar' })
   shift: ShiftType;
 
-  @Column({ type: 'enum', enum: GroupType })
+  @Column({ type: 'varchar' })
   group: GroupType;
 
   @Column({ name: 'time_slot' })
@@ -74,9 +75,9 @@ export class BondingReject {
   @Column({ type: 'text' })
   reason: string;
 
+  // ✅ Ganti dari 'enum' → 'varchar'
   @Column({
-    type: 'enum',
-    enum: BondingRejectStatus,
+    type: 'varchar',
     default: BondingRejectStatus.PENDING,
   })
   status: BondingRejectStatus;

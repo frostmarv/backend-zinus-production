@@ -1,10 +1,13 @@
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { BondingReject, BondingRejectStatus } from './entities/bonding-reject.entity';
+import {
+  BondingReject,
+  BondingRejectStatus,
+} from './entities/bonding-reject.entity';
 import { CreateBondingRejectDto } from './dto/create-bonding-reject.dto';
 import { UpdateBondingRejectDto } from './dto/update-bonding-reject.dto';
-import * as dayjs from 'dayjs';
+import dayjs from 'dayjs';
 
 @Injectable()
 export class BondingRejectService {
@@ -41,9 +44,14 @@ export class BondingRejectService {
   }
 
   async create(createDto: CreateBondingRejectDto): Promise<BondingReject> {
-    this.logger.log(`Creating bonding reject record for shift ${createDto.shift}, group ${createDto.group}`);
+    this.logger.log(
+      `Creating bonding reject record for shift ${createDto.shift}, group ${createDto.group}`,
+    );
 
-    const batchNumber = await this.generateBatchNumber(createDto.shift, createDto.group);
+    const batchNumber = await this.generateBatchNumber(
+      createDto.shift,
+      createDto.group,
+    );
 
     const bondingReject = this.bondingRejectRepository.create({
       ...createDto,
@@ -80,7 +88,9 @@ export class BondingRejectService {
     }
 
     if (filters?.startDate) {
-      query.andWhere('br.timestamp >= :startDate', { startDate: filters.startDate });
+      query.andWhere('br.timestamp >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters?.endDate) {
@@ -110,13 +120,18 @@ export class BondingRejectService {
     });
 
     if (!bondingReject) {
-      throw new NotFoundException(`Bonding reject with batch number ${batchNumber} not found`);
+      throw new NotFoundException(
+        `Bonding reject with batch number ${batchNumber} not found`,
+      );
     }
 
     return bondingReject;
   }
 
-  async update(id: string, updateDto: UpdateBondingRejectDto): Promise<BondingReject> {
+  async update(
+    id: string,
+    updateDto: UpdateBondingRejectDto,
+  ): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
 
     Object.assign(bondingReject, updateDto);
@@ -127,7 +142,10 @@ export class BondingRejectService {
     return updated;
   }
 
-  async updateStatus(id: string, status: BondingRejectStatus): Promise<BondingReject> {
+  async updateStatus(
+    id: string,
+    status: BondingRejectStatus,
+  ): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
     bondingReject.status = status;
 
