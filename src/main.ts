@@ -7,10 +7,13 @@ if (!globalThis.crypto) {
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe, RequestMethod } from '@nestjs/common';
+import { ValidationPipe } from '@nestjs/common'; // ← Hapus Reflector dari sini
 import { ConfigService } from '@nestjs/config';
 import { ConfigHelper } from './config/config.helper';
 import { AllExceptionsFilter } from './filters/http-exception.filter';
+
+// Import guard (tanpa instantiate manual)
+import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -42,6 +45,9 @@ async function bootstrap() {
 
   // ✅ Enable global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
+
+  // ✅ Terapkan JWT Guard secara global (CARA BENAR)
+  app.useGlobalGuards(app.get(JwtAuthGuard));
 
   // ✅ Enable CORS (for Replit or custom origins)
   const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';

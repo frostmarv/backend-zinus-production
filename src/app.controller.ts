@@ -2,6 +2,7 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
+import { SkipAuth } from './common/decorators/skip-auth.decorator';
 
 @ApiTags('Application')
 @Controller()
@@ -18,6 +19,7 @@ export class AppController {
     return this.appService.getHello();
   }
 
+  @SkipAuth()
   @Get('health')
   @ApiOperation({ summary: 'Health check endpoint' })
   @ApiResponse({

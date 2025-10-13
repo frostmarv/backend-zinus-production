@@ -1,7 +1,11 @@
 // src/modules/cutting/cutting.service.ts
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, In } from 'typeorm';
 import { CuttingRecord } from './cutting.entity';
 import { BalokEntity } from './balok.entity';
 import { ActualEntity } from './actual.entity';
@@ -39,12 +43,14 @@ export class CuttingService {
 
   async create(dto: CreateCuttingDto) {
     // ✅ Validasi input wajib
-    if (!dto.productionDate) throw new BadRequestException('productionDate wajib diisi');
+    if (!dto.productionDate)
+      throw new BadRequestException('productionDate wajib diisi');
     if (!dto.shift) throw new BadRequestException('shift wajib diisi');
     if (!dto.machine) throw new BadRequestException('machine wajib diisi');
     if (!dto.operator) throw new BadRequestException('operator wajib diisi');
     if (!dto.time) throw new BadRequestException('time wajib diisi');
-    if (dto.noUrut === undefined) throw new BadRequestException('noUrut wajib diisi');
+    if (dto.noUrut === undefined)
+      throw new BadRequestException('noUrut wajib diisi');
 
     const record = this.cuttingRepo.create({
       productionDate: dto.productionDate,
@@ -234,7 +240,6 @@ export class CuttingService {
       const entryEntities = dto.entries.map((entry) => {
         return this.productionCuttingEntryRepo.create({
           customer: entry.customer,
-          customerPO: entry.customerPO,
           poNumber: entry.poNumber,
           sku: entry.sku,
           sCode: entry.sCode || null,
@@ -284,30 +289,30 @@ export class CuttingService {
 
   // Helper: Compute remain quantity berdasarkan total produksi di database
   private async computeRemainQuantities(records: ProductionCuttingRecord[]) {
-    // Kumpulkan semua unique keys (customerPO, sku, sCode)
+    // Kumpulkan semua unique keys (poNumber, sku, sCode)
     const keys = new Set<string>();
     records.forEach((record) => {
       record.entries?.forEach((entry) => {
-        if (entry.customerPO && entry.sku && entry.sCode) {
-          keys.add(`${entry.customerPO}|${entry.sku}|${entry.sCode}`);
+        if (entry.poNumber && entry.sku && entry.sCode) {
+          keys.add(`${entry.poNumber}|${entry.sku}|${entry.sCode}`);
         }
       });
     });
 
     // Query total produksi untuk setiap key
     const totalProducedMap = new Map<string, number>();
-    
+
     for (const key of keys) {
-      const [customerPO, sku, sCode] = key.split('|');
-      
+      const [poNumber, sku, sCode] = key.split('|');
+
       const result = await this.productionCuttingEntryRepo
         .createQueryBuilder('entry')
         .select('SUM(entry.quantityProduksi)', 'total')
-        .where('entry.customerPO = :customerPO', { customerPO })
+        .where('entry.poNumber = :poNumber', { poNumber })
         .andWhere('entry.sku = :sku', { sku })
         .andWhere('entry.sCode = :sCode', { sCode })
         .getRawOne();
-      
+
       totalProducedMap.set(key, parseFloat(result?.total || 0));
     }
 
@@ -315,10 +320,10 @@ export class CuttingService {
     return records.map((record) => ({
       ...record,
       entries: record.entries?.map((entry) => {
-        const key = `${entry.customerPO}|${entry.sku}|${entry.sCode}`;
+        const key = `${entry.poNumber}|${entry.sku}|${entry.sCode}`;
         const totalProduced = totalProducedMap.get(key) || 0;
         const remain = entry.quantityOrder - totalProduced;
-        
+
         return {
           ...entry,
           remainQuantity: remain,
@@ -334,6 +339,9 @@ export class CuttingService {
         `Production cutting record dengan ID "${id}" tidak ditemukan`,
       );
     }
-    return { message: `Production cutting record dengan ID "${id}" berhasil dihapus`, id };
+    return {
+      message: `Production cutting record dengan ID "${id}" berhasil dihapus`,
+      id,
+    };
   }
 }

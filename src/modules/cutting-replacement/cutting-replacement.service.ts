@@ -1,7 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+// src/modules/cutting-replacement/cutting-replacement.service.ts
+
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { CuttingProcess, CuttingProcessStatus } from './entities/cutting-process.entity';
+import {
+  CuttingProcess,
+  CuttingProcessStatus,
+} from './entities/cutting-process.entity';
 import { CreateCuttingProcessDto } from './dto/create-cutting-process.dto';
 import { UpdateCuttingProcessDto } from './dto/update-cutting-process.dto';
 import { ReplacementService } from '../replacement/replacement.service';
@@ -18,8 +28,9 @@ export class CuttingReplacementService {
   ) {}
 
   async create(createDto: CreateCuttingProcessDto): Promise<CuttingProcess> {
-    // Verify replacement exists
-    const replacement = await this.replacementService.findOne(createDto.replacementId);
+    const replacement = await this.replacementService.findOne(
+      createDto.replacementId,
+    );
 
     if (replacement.status === ReplacementStatus.COMPLETED) {
       throw new BadRequestException('Replacement is already completed');
@@ -29,7 +40,9 @@ export class CuttingReplacementService {
       throw new BadRequestException('Replacement is cancelled');
     }
 
-    this.logger.log(`Creating cutting process for replacement ${createDto.replacementId}`);
+    this.logger.log(
+      `Creating cutting process for replacement ${createDto.replacementId}`,
+    );
 
     const cuttingProcess = this.cuttingProcessRepository.create({
       ...createDto,
@@ -82,107 +95,122 @@ export class CuttingReplacementService {
 
   async processReplacement(
     replacementId: string,
-    processedQty: number,
+    quantityThisTime: number,
     operatorName?: string,
     machineId?: string,
   ): Promise<CuttingProcess> {
-    const replacement = await this.replacementService.findOne(replacementId);
+    if (quantityThisTime <= 0) {
+      throw new BadRequestException('Quantity must be greater than 0');
+    }
 
-    if (processedQty > replacement.requestedQty) {
+    const replacement = await this.replacementService.findOne(replacementId);
+    const currentProcessed = replacement.processedQty || 0;
+    const remaining = replacement.requestedQty - currentProcessed;
+
+    if (quantityThisTime > remaining) {
       throw new BadRequestException(
-        `Processed quantity (${processedQty}) cannot exceed requested quantity (${replacement.requestedQty})`,
+        `Cannot process ${quantityThisTime} units. Only ${remaining} units remaining.`,
       );
     }
 
-    // Check if cutting process already exists for this replacement
     let cuttingProcess = await this.cuttingProcessRepository.findOne({
       where: { replacementId },
     });
 
+    const newTotalProcessed = currentProcessed + quantityThisTime;
+
     if (!cuttingProcess) {
-      // Create new cutting process
-      cuttingProcess = await this.create({
+      cuttingProcess = this.cuttingProcessRepository.create({
         replacementId,
-        processedQty,
+        processedQty: newTotalProcessed,
         operatorName,
         machineId,
+        status:
+          newTotalProcessed === replacement.requestedQty
+            ? CuttingProcessStatus.COMPLETED
+            : CuttingProcessStatus.IN_PROGRESS,
+        startedAt: new Date(),
+        completedAt:
+          newTotalProcessed === replacement.requestedQty ? new Date() : null,
       });
-    }
+    } else {
+      cuttingProcess.processedQty = newTotalProcessed;
+      cuttingProcess.operatorName = operatorName || cuttingProcess.operatorName;
+      cuttingProcess.machineId = machineId || cuttingProcess.machineId;
+      cuttingProcess.status =
+        newTotalProcessed === replacement.requestedQty
+          ? CuttingProcessStatus.COMPLETED
+          : CuttingProcessStatus.IN_PROGRESS;
 
-    // Update cutting process
-    cuttingProcess.processedQty = processedQty;
-    cuttingProcess.operatorName = operatorName || cuttingProcess.operatorName;
-    cuttingProcess.machineId = machineId || cuttingProcess.machineId;
-
-    if (processedQty === 0) {
-      cuttingProcess.status = CuttingProcessStatus.PENDING;
-      cuttingProcess.startedAt = null;
-      cuttingProcess.completedAt = null;
-    } else if (processedQty < replacement.requestedQty) {
-      cuttingProcess.status = CuttingProcessStatus.IN_PROGRESS;
+      if (newTotalProcessed === replacement.requestedQty) {
+        cuttingProcess.completedAt = new Date();
+      }
       if (!cuttingProcess.startedAt) {
         cuttingProcess.startedAt = new Date();
       }
-    } else if (processedQty === replacement.requestedQty) {
-      cuttingProcess.status = CuttingProcessStatus.COMPLETED;
-      cuttingProcess.completedAt = new Date();
     }
 
     const updated = await this.cuttingProcessRepository.save(cuttingProcess);
 
-    // Update replacement progress
-    await this.replacementService.updateProcessedQty(replacementId, processedQty);
+    // Update replacement dengan TOTAL yang sama
+    await this.replacementService.update(replacementId, {
+      processedQty: newTotalProcessed,
+    });
 
     this.logger.log(
-      `Processed replacement ${replacementId}: ${processedQty}/${replacement.requestedQty}, status: ${updated.status}`,
+      `Processed ${quantityThisTime} units for replacement ${replacementId}. Total: ${newTotalProcessed}/${replacement.requestedQty}`,
     );
 
     return updated;
   }
 
-  async update(id: string, updateDto: UpdateCuttingProcessDto): Promise<CuttingProcess> {
+  async update(
+    id: string,
+    updateDto: UpdateCuttingProcessDto,
+  ): Promise<CuttingProcess> {
     const cuttingProcess = await this.findOne(id);
 
-    // If processedQty is being updated, validate and sync with replacement
+    // 🔒 Larang update processedQty melalui endpoint ini
     if (updateDto.processedQty !== undefined) {
-      const replacement = await this.replacementService.findOne(cuttingProcess.replacementId);
-
-      if (updateDto.processedQty > replacement.requestedQty) {
-        throw new BadRequestException(
-          `Processed quantity (${updateDto.processedQty}) cannot exceed requested quantity (${replacement.requestedQty})`,
-        );
-      }
-
-      // Update replacement progress
-      await this.replacementService.updateProcessedQty(
-        cuttingProcess.replacementId,
-        updateDto.processedQty,
+      throw new BadRequestException(
+        'Processed quantity cannot be updated directly. Use /cutting/replacement/process endpoint to add partial quantities.',
       );
     }
 
     Object.assign(cuttingProcess, updateDto);
-
     const updated = await this.cuttingProcessRepository.save(cuttingProcess);
     this.logger.log(`Updated cutting process ${id}, status: ${updated.status}`);
-
     return updated;
   }
 
-  async updateStatus(id: string, status: CuttingProcessStatus): Promise<CuttingProcess> {
+  async updateStatus(
+    id: string,
+    status: CuttingProcessStatus,
+  ): Promise<CuttingProcess> {
     const cuttingProcess = await this.findOne(id);
-    cuttingProcess.status = status;
-
-    if (status === CuttingProcessStatus.IN_PROGRESS && !cuttingProcess.startedAt) {
-      cuttingProcess.startedAt = new Date();
-    }
 
     if (status === CuttingProcessStatus.COMPLETED) {
+      const replacement = await this.replacementService.findOne(
+        cuttingProcess.replacementId,
+      );
+      if (cuttingProcess.processedQty < replacement.requestedQty) {
+        throw new BadRequestException(
+          `Cannot mark as completed. Only ${cuttingProcess.processedQty}/${replacement.requestedQty} units processed.`,
+        );
+      }
       cuttingProcess.completedAt = new Date();
+    }
+
+    cuttingProcess.status = status;
+    if (
+      status === CuttingProcessStatus.IN_PROGRESS &&
+      !cuttingProcess.startedAt
+    ) {
+      cuttingProcess.startedAt = new Date();
     }
 
     const updated = await this.cuttingProcessRepository.save(cuttingProcess);
     this.logger.log(`Updated cutting process ${id} status to ${status}`);
-
     return updated;
   }
 
@@ -192,14 +220,13 @@ export class CuttingReplacementService {
     this.logger.log(`Deleted cutting process ${id}`);
   }
 
-  async getStatistics(filters?: {
-    startDate?: Date;
-    endDate?: Date;
-  }) {
+  async getStatistics(filters?: { startDate?: Date; endDate?: Date }) {
     const query = this.cuttingProcessRepository.createQueryBuilder('cp');
 
     if (filters?.startDate) {
-      query.andWhere('cp.created_at >= :startDate', { startDate: filters.startDate });
+      query.andWhere('cp.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters?.endDate) {
@@ -208,10 +235,30 @@ export class CuttingReplacementService {
 
     const [total, pending, inProgress, completed, failed] = await Promise.all([
       query.getCount(),
-      query.clone().andWhere('cp.status = :status', { status: CuttingProcessStatus.PENDING }).getCount(),
-      query.clone().andWhere('cp.status = :status', { status: CuttingProcessStatus.IN_PROGRESS }).getCount(),
-      query.clone().andWhere('cp.status = :status', { status: CuttingProcessStatus.COMPLETED }).getCount(),
-      query.clone().andWhere('cp.status = :status', { status: CuttingProcessStatus.FAILED }).getCount(),
+      query
+        .clone()
+        .andWhere('cp.status = :status', {
+          status: CuttingProcessStatus.PENDING,
+        })
+        .getCount(),
+      query
+        .clone()
+        .andWhere('cp.status = :status', {
+          status: CuttingProcessStatus.IN_PROGRESS,
+        })
+        .getCount(),
+      query
+        .clone()
+        .andWhere('cp.status = :status', {
+          status: CuttingProcessStatus.COMPLETED,
+        })
+        .getCount(),
+      query
+        .clone()
+        .andWhere('cp.status = :status', {
+          status: CuttingProcessStatus.FAILED,
+        })
+        .getCount(),
     ]);
 
     const totalProcessed = await query

@@ -1,38 +1,27 @@
-// src/modules/bonding-reject/dto/create-bonding-reject.dto.ts
 import {
   IsNotEmpty,
   IsNumber,
   IsString,
   Min,
   IsOptional,
-  IsArray,
-  ValidateNested,
 } from 'class-validator';
-import { Type } from 'class-transformer';
 
 export class CreateBondingRejectDto {
   @IsString()
   @IsNotEmpty()
-  timestamp: string; // ISO string dari frontend, akan di-parse jadi Date di service
+  timestamp: string;
 
-  // ✅ Shift dikirim sebagai '1' atau '2'
   @IsString()
   @IsNotEmpty()
   shift: string;
 
-  // ✅ Group dikirim sebagai 'A' atau 'B'
   @IsString()
   @IsNotEmpty()
   group: string;
 
   @IsString()
   @IsNotEmpty()
-  timeSlot: string;
-
-  // ❌ HAPUS machine — tidak dikirim dari form
-  // @IsString()
-  // @IsOptional()
-  // machine?: string;
+  time_slot: string;
 
   @IsString()
   @IsNotEmpty()
@@ -48,12 +37,7 @@ export class CreateBondingRejectDto {
 
   @IsString()
   @IsNotEmpty()
-  poNumber: string;
-
-  // ❌ HAPUS customerPo — tidak dikirim dari form
-  // @IsString()
-  // @IsNotEmpty()
-  // customerPo: string;
+  po_number: string;
 
   @IsString()
   @IsNotEmpty()
@@ -61,19 +45,22 @@ export class CreateBondingRejectDto {
 
   @IsString()
   @IsNotEmpty()
-  sCode: string;
+  s_code: string;
+
+  // ✅ Tambahkan field description — opsional tapi relevan
+  @IsString()
+  @IsOptional()
+  description?: string;
 
   @IsNumber()
   @Min(1)
-  ngQuantity: number;
+  ng_quantity: number;
 
   @IsString()
   @IsNotEmpty()
   reason: string;
 
-  // ❌ HAPUS images — tidak lagi dikirim di form input
-  // @IsArray()
-  // @IsOptional()
-  // @IsString({ each: true })
-  // images?: string[];
+  @IsString()
+  @IsOptional()
+  batch_number?: string;
 }

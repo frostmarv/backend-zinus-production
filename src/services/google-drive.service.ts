@@ -1,7 +1,8 @@
+// src/services/google-drive.service.ts
 import { Injectable, Logger } from '@nestjs/common';
 import { getDriveService } from '../config/googleDrive.config';
 import fs from 'fs';
-import path from 'path';
+import { Readable } from 'stream';
 import dayjs from 'dayjs';
 
 @Injectable()
@@ -9,6 +10,19 @@ export class GoogleDriveService {
   private readonly logger = new Logger(GoogleDriveService.name);
   private readonly ROOT_FOLDER_ID = '18kSzEb6hl8OCtMsgWwSV_ghszcMK2b31'; // ZinusDreamIndonesia
 
+  /**
+   * Convert Buffer to Readable Stream
+   */
+  private bufferToStream(buffer: Buffer): Readable {
+    const stream = new Readable();
+    stream.push(buffer);
+    stream.push(null);
+    return stream;
+  }
+
+  /**
+   * Upload file dari Multer (handle memory & disk storage)
+   */
   async uploadFile(file: Express.Multer.File, folderId: string) {
     const drive = await getDriveService();
 
@@ -17,9 +31,21 @@ export class GoogleDriveService {
       parents: [folderId],
     };
 
+    // ✅ Handle kedua jenis storage dengan benar
+    let mediaStream;
+    if (file.buffer) {
+      // Memory storage: konversi buffer ke stream
+      mediaStream = this.bufferToStream(file.buffer);
+    } else if (file.path) {
+      // Disk storage: baca dari file path
+      mediaStream = fs.createReadStream(file.path);
+    } else {
+      throw new Error('File tidak memiliki buffer atau path');
+    }
+
     const media = {
       mimeType: file.mimetype,
-      body: fs.createReadStream(file.path),
+      body: mediaStream,
     };
 
     const response = await drive.files.create({
@@ -28,40 +54,10 @@ export class GoogleDriveService {
       fields: 'id, name, webViewLink, webContentLink',
     });
 
-    // Hapus file lokal setelah upload
-    fs.unlinkSync(file.path);
-
-    return response.data;
-  }
-
-  /**
-   * Upload file from local path to Google Drive
-   */
-  async uploadFileFromPath(
-    filePath: string,
-    fileName: string,
-    folderId: string,
-    mimeType?: string,
-  ) {
-    const drive = await getDriveService();
-
-    const fileMetadata = {
-      name: fileName,
-      parents: [folderId],
-    };
-
-    const media = {
-      mimeType: mimeType || 'application/octet-stream',
-      body: fs.createReadStream(filePath),
-    };
-
-    const response = await drive.files.create({
-      requestBody: fileMetadata,
-      media: media,
-      fields: 'id, name, webViewLink, webContentLink',
-    });
-
-    this.logger.log(`✅ Uploaded ${fileName} to Google Drive`);
+    // Hapus file lokal hanya jika menggunakan disk storage
+    if (file.path && fs.existsSync(file.path)) {
+      fs.unlinkSync(file.path);
+    }
 
     return response.data;
   }
@@ -70,6 +66,7 @@ export class GoogleDriveService {
     const drive = await getDriveService();
 
     const fileMetadata: any = {
+      // ✅ FIX: tambahkan titik dua (:)
       name: folderName,
       mimeType: 'application/vnd.google-apps.folder',
     };
@@ -113,7 +110,6 @@ export class GoogleDriveService {
     folderName: string,
     parentId: string,
   ): Promise<string> {
-    // Try to find existing folder
     const existingFolderId = await this.findFolder(folderName, parentId);
 
     if (existingFolderId) {
@@ -121,7 +117,6 @@ export class GoogleDriveService {
       return existingFolderId;
     }
 
-    // Create new folder
     this.logger.log(`📁 Creating new folder: ${folderName}`);
     const folder = await this.createFolder(folderName, parentId);
     return folder.id;
@@ -129,7 +124,6 @@ export class GoogleDriveService {
 
   /**
    * Upload bonding reject images with auto folder structure
-   * Structure: ZinusDreamIndonesia/Bonding-Reject/YYYY/MM/batch-number/
    */
   async uploadBondingRejectImages(
     batchNumber: string,
@@ -139,7 +133,6 @@ export class GoogleDriveService {
       const year = dayjs().format('YYYY');
       const month = dayjs().format('MM');
 
-      // Create folder structure: Bonding-Reject/YYYY/MM/batch-number
       const bondingRejectFolder = await this.getOrCreateFolder(
         'Bonding-Reject',
         this.ROOT_FOLDER_ID,
@@ -158,15 +151,14 @@ export class GoogleDriveService {
         `📁 Folder structure ready: Bonding-Reject/${year}/${month}/${batchNumber}`,
       );
 
-      // Upload all files
       const uploadResults = [];
       for (const file of files) {
-        const result = await this.uploadFileFromPath(
-          file.path,
-          file.originalname,
-          batchFolder,
-          file.mimetype,
-        );
+        if (!file || (!file.path && !file.buffer)) {
+          this.logger.warn(`⚠️ Skipping invalid file`);
+          continue;
+        }
+
+        const result = await this.uploadFile(file, batchFolder);
 
         uploadResults.push({
           filename: file.originalname,
@@ -174,13 +166,9 @@ export class GoogleDriveService {
           driveLink: result.webViewLink,
           size: file.size,
         });
-
-        // Delete local file after upload
-        fs.unlinkSync(file.path);
       }
 
       this.logger.log(`✅ Uploaded ${files.length} images to Google Drive`);
-
       return uploadResults;
     } catch (error) {
       this.logger.error(

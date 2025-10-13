@@ -1,3 +1,4 @@
+// src/modules/bonding-reject/bonding-reject.module.ts
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BondingReject } from './entities/bonding-reject.entity';

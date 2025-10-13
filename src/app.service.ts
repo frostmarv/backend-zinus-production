@@ -1,11 +1,22 @@
 // src/app.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
+import { AuthService } from './modules/auth/auth.service';
 
 @Injectable()
-export class AppService {
-  constructor(@InjectDataSource() private dataSource: DataSource) {}
+export class AppService implements OnModuleInit {
+  constructor(
+    @InjectDataSource() private dataSource: DataSource,
+    private authService: AuthService, // 👈 Inject AuthService
+  ) {}
+
+  async onModuleInit() {
+    // Auto-create user awal hanya di development
+    if (process.env.NODE_ENV !== 'production') {
+      await this.authService.createInitialUser();
+    }
+  }
 
   getHello(): string {
     return 'Zinus Production Backend API - Ready to serve! 🚀';

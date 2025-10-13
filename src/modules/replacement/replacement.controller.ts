@@ -1,3 +1,4 @@
+// src/modules/replacement/replacement.controller.ts
 import {
   Controller,
   Get,
@@ -15,7 +16,10 @@ import {
 import { ReplacementService } from './replacement.service';
 import { CreateReplacementDto } from './dto/create-replacement.dto';
 import { UpdateReplacementDto } from './dto/update-replacement.dto';
-import { DepartmentType, ReplacementStatus } from './entities/replacement-progress.entity';
+import {
+  DepartmentType,
+  ReplacementStatus,
+} from './entities/replacement-progress.entity';
 
 @Controller('replacement')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -108,7 +112,10 @@ export class ReplacementController {
     @Param('id') id: string,
     @Body('processedQty') processedQty: number,
   ) {
-    const data = await this.replacementService.updateProcessedQty(id, processedQty);
+    const data = await this.replacementService.updateProcessedQty(
+      id,
+      processedQty,
+    );
 
     return {
       success: true,

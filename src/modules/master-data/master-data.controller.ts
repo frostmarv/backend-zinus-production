@@ -1,3 +1,4 @@
+// src/modules/master-data/master-data.controller.ts
 import { Controller, Get, Query, BadRequestException } from '@nestjs/common';
 import { MasterDataService } from './master-data.service';
 
@@ -5,49 +6,57 @@ import { MasterDataService } from './master-data.service';
 export class MasterDataController {
   constructor(private readonly masterDataService: MasterDataService) {}
 
-  // 1. GET /api/master-data/customers
   @Get('customers')
   async getCustomers() {
     return this.masterDataService.getCustomers();
   }
 
-  // 2. GET /api/master-data/po-numbers?customerId=1
   @Get('po-numbers')
   async getPoNumbers(@Query('customerId') customerId: string) {
+    if (!customerId) {
+      throw new BadRequestException('customerId is required');
+    }
     return this.masterDataService.getPoNumbers(Number(customerId));
   }
 
-  // 3. GET /api/master-data/customer-pos?poNumber=PO12345
   @Get('customer-pos')
   async getCustomerPos(@Query('poNumber') poNumber: string) {
+    if (!poNumber) {
+      throw new BadRequestException('poNumber is required');
+    }
     return this.masterDataService.getCustomerPos(poNumber);
   }
 
-  // 4. GET /api/master-data/skus?customerPo=XYZ
   @Get('skus')
   async getSkus(@Query('customerPo') customerPo: string) {
+    if (!customerPo) {
+      throw new BadRequestException('customerPo is required');
+    }
     return this.masterDataService.getSkus(customerPo);
   }
 
-  // 5. GET /api/master-data/qty-plans?customerPo=XYZ&sku=SKU123
   @Get('qty-plans')
   async getQtyPlans(
     @Query('customerPo') customerPo: string,
     @Query('sku') sku: string,
   ) {
+    if (!customerPo || !sku) {
+      throw new BadRequestException('customerPo and sku are required');
+    }
     return this.masterDataService.getQtyPlans(customerPo, sku);
   }
 
-  // 6. GET /api/master-data/weeks?customerPo=XYZ&sku=SKU123
   @Get('weeks')
   async getWeeks(
     @Query('customerPo') customerPo: string,
     @Query('sku') sku: string,
   ) {
+    if (!customerPo || !sku) {
+      throw new BadRequestException('customerPo and sku are required');
+    }
     return this.masterDataService.getWeeks(customerPo, sku);
   }
 
-  // 7. GET /api/master-data/assembly-layers?sku=SKU123
   @Get('assembly-layers')
   async getAssemblyLayers(@Query('sku') sku: string) {
     if (!sku || sku.trim() === '') {
@@ -56,9 +65,9 @@ export class MasterDataController {
     return this.masterDataService.getAssemblyLayers(sku.trim());
   }
 
-  // 8. GET /api/master-data/remain-quantity?customerPo=X&sku=Y&sCode=Z
-  @Get('remain-quantity')
-  async getRemainQuantity(
+  // 🔥 Baru: Endpoint untuk remain quantity di cutting
+  @Get('remain-quantity-cutting')
+  async getRemainQuantityCutting(
     @Query('customerPo') customerPo: string,
     @Query('sku') sku: string,
     @Query('sCode') sCode: string,
@@ -69,19 +78,17 @@ export class MasterDataController {
 
     if (!trimmedCustomerPo || !trimmedSku || !trimmedSCode) {
       throw new BadRequestException(
-        'customerPo, sku, and sCode parameters are required and cannot be empty',
+        'customerPo, sku, and sCode are required and cannot be empty',
       );
     }
 
-    return this.masterDataService.getRemainQuantity(
+    return this.masterDataService.getRemainQuantityForCutting(
       trimmedCustomerPo,
       trimmedSku,
       trimmedSCode,
     );
   }
 
-  // 9. GET /api/master-data/remain-quantity-department?customerPo=X&sku=Y&department=bonding
-  // Generic endpoint untuk semua department (scalable)
   @Get('remain-quantity-department')
   async getRemainQuantityDepartment(
     @Query('customerPo') customerPo: string,
@@ -105,8 +112,6 @@ export class MasterDataController {
     );
   }
 
-  // 10. GET /api/master-data/remain-quantity-bonding?customerPo=X&sku=Y
-  // Backward compatibility - redirect ke method generic
   @Get('remain-quantity-bonding')
   async getRemainQuantityBonding(
     @Query('customerPo') customerPo: string,

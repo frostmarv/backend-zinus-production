@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+// src/modules/master-data/master-data.service.ts
+import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../entities/customer.entity';
@@ -28,7 +29,6 @@ export class MasterDataService {
     private bondingSummaryRepo: Repository<BondingSummary>,
   ) {}
 
-  // 1. Customers
   async getCustomers() {
     const customers = await this.customerRepo.find({
       where: { is_active: true },
@@ -39,7 +39,6 @@ export class MasterDataService {
     }));
   }
 
-  // 2. PO Numbers by Customer
   async getPoNumbers(customerId: number) {
     const orders = await this.orderRepo.find({
       where: { customer: { customer_id: customerId } },
@@ -49,7 +48,6 @@ export class MasterDataService {
     return unique.map((po) => ({ value: po, label: po }));
   }
 
-  // 3. Customer POs by PO Number
   async getCustomerPos(poNumber: string) {
     const orders = await this.orderRepo.find({
       where: { po_number: poNumber },
@@ -59,7 +57,6 @@ export class MasterDataService {
     return unique.map((cpo) => ({ value: cpo, label: cpo }));
   }
 
-  // 4. SKUs by Customer PO (dengan F.CODE)
   async getSkus(customerPo: string) {
     const items = await this.itemRepo
       .createQueryBuilder('poi')
@@ -83,7 +80,6 @@ export class MasterDataService {
     }));
   }
 
-  // 5. Qty Plans by Customer PO + SKU (dengan F.CODE, S.CODE, Description)
   async getQtyPlans(customerPo: string, sku: string) {
     const items = await this.itemRepo
       .createQueryBuilder('poi')
@@ -100,7 +96,6 @@ export class MasterDataService {
       ])
       .getRawMany();
 
-    // Group by qty with F.CODE and optional S.CODE/Description
     const qtyMap = new Map();
     items.forEach((i) => {
       const key = i.planned_qty;
@@ -126,7 +121,6 @@ export class MasterDataService {
     }));
   }
 
-  // 6. Weeks by Customer PO + SKU (dengan F.CODE, S.CODE, Description)
   async getWeeks(customerPo: string, sku: string) {
     const items = await this.itemRepo
       .createQueryBuilder('poi')
@@ -143,7 +137,6 @@ export class MasterDataService {
       ])
       .getRawMany();
 
-    // Group by week with F.CODE and optional S.CODE/Description
     const weekMap = new Map();
     items.forEach((i) => {
       const key = i.week_number;
@@ -169,7 +162,6 @@ export class MasterDataService {
     }));
   }
 
-  // 7. Assembly Layers by SKU
   async getAssemblyLayers(sku: string) {
     const layers = await this.assemblyLayerRepo
       .createQueryBuilder('al')
@@ -193,17 +185,27 @@ export class MasterDataService {
     }));
   }
 
-  // 8. Remain Quantity (quantityOrder - total produksi untuk layer tertentu)
-  async getRemainQuantity(
+  // 🔥 Baru: Remain Quantity untuk Cutting (gunakan po_number internal, bukan customer_po)
+  async getRemainQuantityForCutting(
     customerPo: string,
     sku: string,
     sCode: string,
-  ): Promise<{
-    quantityOrder: number;
-    totalProduced: number;
-    remainQuantity: number;
-  }> {
-    // 1. Get quantityOrder dari production_order_items (aggregate jika ada multiple items)
+  ) {
+    // 1. Dapatkan po_number internal dari customer_po
+    const order = await this.orderRepo.findOne({
+      where: { customer_po: customerPo },
+      select: ['po_number'],
+    });
+
+    if (!order) {
+      throw new BadRequestException(
+        `Tidak ditemukan PO untuk customerPO: ${customerPo}`,
+      );
+    }
+
+    const poNumber = order.po_number;
+
+    // 2. Hitung quantityOrder
     const orderItem = await this.itemRepo
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
@@ -215,19 +217,17 @@ export class MasterDataService {
 
     const quantityOrder = Number(orderItem?.quantityOrder || 0);
 
-    // 2. Hitung total produksi actual untuk layer ini (customerPO + sku + sCode)
+    // 3. Hitung total produksi berdasarkan po_number (internal)
     const productionTotal = await this.cuttingEntryRepo
       .createQueryBuilder('pce')
-      .where('pce.customerPO = :customerPo', { customerPo })
+      .where('pce.poNumber = :poNumber', { poNumber }) // ✅ Gunakan poNumber internal
       .andWhere('pce.sku = :sku', { sku })
       .andWhere('pce.sCode = :sCode', { sCode })
-      .select('SUM(pce.quantityProduksi)', 'total')
+      .select('COALESCE(SUM(pce.quantityProduksi), 0)', 'total')
       .getRawOne();
 
     const totalProduced = Number(productionTotal?.total || 0);
-
-    // 3. Hitung remain
-    const remainQuantity = quantityOrder - totalProduced;
+    const remainQuantity = Math.max(0, quantityOrder - totalProduced);
 
     return {
       quantityOrder,
@@ -236,18 +236,11 @@ export class MasterDataService {
     };
   }
 
-  // 9. Generic Remain Quantity by Department (scalable untuk semua department)
-  // Department: bonding, assembly, packing, dll (kecuali cutting yang punya case khusus)
   async getRemainQuantityByDepartment(
     customerPo: string,
     sku: string,
-    department: 'bonding' | 'assembly' | 'packing' | string,
-  ): Promise<{
-    quantityOrder: number;
-    totalProduced: number;
-    remainQuantity: number;
-  }> {
-    // 1. Get quantityOrder dari production_order_items
+    department: string,
+  ) {
     const orderItem = await this.itemRepo
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
@@ -258,8 +251,6 @@ export class MasterDataService {
       .getRawOne();
 
     const quantityOrder = Number(orderItem?.quantityOrder || 0);
-
-    // 2. Hitung total produksi berdasarkan department
     let totalProduced = 0;
 
     switch (department.toLowerCase()) {
@@ -273,40 +264,19 @@ export class MasterDataService {
         totalProduced = Number(bondingTotal?.total || 0);
         break;
 
-      // TODO: Tambahkan case untuk department lain
-      // case 'assembly':
-      //   const assemblyTotal = await this.assemblySummaryRepo...
-      //   totalProduced = Number(assemblyTotal?.total || 0);
-      //   break;
-      
-      // case 'packing':
-      //   const packingTotal = await this.packingSummaryRepo...
-      //   totalProduced = Number(packingTotal?.total || 0);
-      //   break;
+      // Tambahkan department lain di sini jika diperlukan
 
       default:
-        throw new Error(`Department '${department}' is not supported yet`);
+        throw new BadRequestException(
+          `Department '${department}' is not supported`,
+        );
     }
 
-    // 3. Hitung remain
-    const remainQuantity = quantityOrder - totalProduced;
-
-    return {
-      quantityOrder,
-      totalProduced,
-      remainQuantity,
-    };
+    const remainQuantity = Math.max(0, quantityOrder - totalProduced);
+    return { quantityOrder, totalProduced, remainQuantity };
   }
 
-  // 10. Wrapper untuk Bonding (backward compatibility)
-  async getRemainQuantityBonding(
-    customerPo: string,
-    sku: string,
-  ): Promise<{
-    quantityOrder: number;
-    totalProduced: number;
-    remainQuantity: number;
-  }> {
+  async getRemainQuantityBonding(customerPo: string, sku: string) {
     return this.getRemainQuantityByDepartment(customerPo, sku, 'bonding');
   }
 }

@@ -111,7 +111,11 @@ export class CuttingController {
         dto.week || '-', // Week
       ]);
 
-      await this.sheetsService.appendToDepartmentSheet('cutting', 'balok', rows);
+      await this.sheetsService.appendToDepartmentSheet(
+        'cutting',
+        'balok',
+        rows,
+      );
     } catch (error) {
       console.warn('⚠️ Gagal kirim ke Google Sheets (Balok):', error.message);
       // Jangan hentikan proses — integrasi opsional
@@ -163,15 +167,16 @@ export class CuttingController {
     try {
       const rows = dto.entries.map((entry) => {
         // Remain akan dihitung di frontend/sheets, tidak disimpan di DB
-        const simpleRemain = (entry.quantityOrder || 0) - (entry.quantityProduksi || 0);
-        
+        const simpleRemain =
+          (entry.quantityOrder || 0) - (entry.quantityProduksi || 0);
+
         return [
           dto.timestamp, // Timestamp
           dto.shift, // Shift
           dto.group, // Group
           dto.time, // Time
           entry.customer || '-', // Customer
-          entry.customerPO || '-', // PO Customer
+          '-', // CustomerPO (dihapus)
           entry.poNumber || '-', // PO Internal
           entry.sku || '-', // SKU
           entry.sCode || '-', // S-Code
@@ -183,7 +188,11 @@ export class CuttingController {
         ];
       });
 
-      await this.sheetsService.appendToDepartmentSheet('cutting', 'summary', rows);
+      await this.sheetsService.appendToDepartmentSheet(
+        'cutting',
+        'summary',
+        rows,
+      );
     } catch (error) {
       console.warn('⚠️ Gagal kirim ke Google Sheets (Summary):', error.message);
     }

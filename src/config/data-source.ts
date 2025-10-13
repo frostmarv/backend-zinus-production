@@ -9,10 +9,10 @@ const dbType = process.env.DB_TYPE || (isProduction ? 'postgres' : 'sqlite');
 // For CLI operations (migrations, etc.)
 const AppDataSource = new DataSource({
   type: dbType as any,
-  
+
   // PostgreSQL configuration
   ...(dbType === 'postgres' && {
-    ...(process.env.DATABASE_URL 
+    ...(process.env.DATABASE_URL
       ? { url: process.env.DATABASE_URL }
       : {
           host: process.env.PGHOST || 'localhost',
@@ -20,8 +20,7 @@ const AppDataSource = new DataSource({
           username: process.env.PGUSER || 'postgres',
           password: process.env.PGPASSWORD || '',
           database: process.env.PGDATABASE || 'postgres',
-        }
-    ),
+        }),
     ssl: isProduction ? { rejectUnauthorized: false } : false,
   }),
 
@@ -33,10 +32,7 @@ const AppDataSource = new DataSource({
   // Common configuration
   synchronize: false, // Always false for CLI operations
   logging: process.env.DB_LOGGING === 'true',
-  entities: [
-    __dirname + '/../**/*.entity.{js,ts}',
-    'src/**/*.entity.{js,ts}',
-  ],
+  entities: [__dirname + '/../**/*.entity.{js,ts}', 'src/**/*.entity.{js,ts}'],
   migrations: [
     __dirname + '/../migrations/*.{js,ts}',
     'src/migrations/*.{js,ts}',

@@ -17,9 +17,6 @@ export class ProductionCuttingEntry {
   customer: string;
 
   @Column()
-  customerPO: string;
-
-  @Column()
   poNumber: string;
 
   @Column()

@@ -5,28 +5,36 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import databaseConfig from './config/database.config';
 import { validate } from './config/env.validation';
 
-// Feature modules
+// Core / App-level
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
-import { CuttingModule } from './modules/cutting/cutting.module';
-import { CustomersModule } from './modules/customers/customers.module';
-import { ProductModule } from './modules/products/product.module';
-import { ProductionOrderItemModule } from './modules/production-order-item/production-order-item.module';
-import { ProductionOrderModule } from './modules/production-order/production-order.module';
-import { MasterDataModule } from './modules/master-data/master-data.module';
-import { ProductionPlanningModule } from './modules/production-planning/production-planning.module';
+
+// Feature Modules (diurutkan alfabetis untuk konsistensi)
 import { AssemblyLayersModule } from './modules/assembly-layers/assembly-layers.module';
-import { WorkableBondingModule } from './modules/workable-bonding/workable-bonding.module';
 import { BondingModule } from './modules/bonding/bonding.module';
 import { BondingRejectModule } from './modules/bonding-reject/bonding-reject.module';
-import { ReplacementModule } from './modules/replacement/replacement.module';
+import { CuttingModule } from './modules/cutting/cutting.module';
 import { CuttingReplacementModule } from './modules/cutting-replacement/cutting-replacement.module';
+import { CustomersModule } from './modules/customers/customers.module';
+import { MasterDataModule } from './modules/master-data/master-data.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { ProductModule } from './modules/products/product.module';
+import { ProductionOrderModule } from './modules/production-order/production-order.module';
+import { ProductionOrderItemModule } from './modules/production-order-item/production-order-item.module';
+import { ProductionPlanningModule } from './modules/production-planning/production-planning.module';
+import { ReplacementModule } from './modules/replacement/replacement.module';
+import { WorkableBondingModule } from './modules/workable-bonding/workable-bonding.module';
+
+// 🔐 Authentication Module (cukup import module-nya saja)
+import { AuthModule } from './modules/auth/auth.module';
+
+// External Services & Controllers
 import { DocumentController } from './routes/document.controller';
 import { GoogleDriveService } from './services/google-drive.service';
 
 @Module({
   imports: [
+    // Konfigurasi Environment
     ConfigModule.forRoot({
       isGlobal: true,
       load: [databaseConfig],
@@ -34,6 +42,7 @@ import { GoogleDriveService } from './services/google-drive.service';
       validate,
     }),
 
+    // Database Configuration (menggunakan factory async)
     TypeOrmModule.forRootAsync({
       inject: [ConfigService],
       useFactory: (config: ConfigService) => {
@@ -61,25 +70,26 @@ import { GoogleDriveService } from './services/google-drive.service';
       },
     }),
 
-    // Feature modules
-    CuttingModule,
-    CustomersModule,
-    ProductModule,
-    ProductionOrderItemModule,
-    ProductionOrderModule,
-    MasterDataModule,
-    ProductionPlanningModule,
+    // 🔐 Modul Autentikasi
+    AuthModule,
+
+    // Feature Modules (urut alfabetis)
     AssemblyLayersModule,
-    WorkableBondingModule,
     BondingModule,
-    
-    // New modules for bonding NG workflow
     BondingRejectModule,
-    ReplacementModule,
+    CuttingModule,
     CuttingReplacementModule,
+    CustomersModule,
+    MasterDataModule,
     NotificationModule,
+    ProductModule,
+    ProductionOrderModule,
+    ProductionOrderItemModule,
+    ProductionPlanningModule,
+    ReplacementModule,
+    WorkableBondingModule,
   ],
   controllers: [AppController, DocumentController],
-  providers: [AppService, GoogleDriveService],
+  providers: [AppService, GoogleDriveService], // ✅ TANPA AuthService di sini
 })
 export class AppModule {}

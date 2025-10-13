@@ -16,10 +16,6 @@ export class CreateProductionCuttingEntryDto {
 
   @IsString()
   @IsNotEmpty()
-  customerPO: string;
-
-  @IsString()
-  @IsNotEmpty()
   poNumber: string;
 
   @IsString()

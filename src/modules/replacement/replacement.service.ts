@@ -1,7 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
+// src/modules/replacement/replacement.service.ts
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { ReplacementProgress, ReplacementStatus, DepartmentType } from './entities/replacement-progress.entity';
+import {
+  ReplacementProgress,
+  ReplacementStatus,
+  DepartmentType,
+} from './entities/replacement-progress.entity';
 import { CreateReplacementDto } from './dto/create-replacement.dto';
 import { UpdateReplacementDto } from './dto/update-replacement.dto';
 
@@ -14,7 +24,9 @@ export class ReplacementService {
     private readonly replacementRepository: Repository<ReplacementProgress>,
   ) {}
 
-  async createRequest(createDto: CreateReplacementDto): Promise<ReplacementProgress> {
+  async createRequest(
+    createDto: CreateReplacementDto,
+  ): Promise<ReplacementProgress> {
     this.logger.log(
       `Creating replacement request from ${createDto.sourceDept} to ${createDto.targetDept}, batch: ${createDto.sourceBatchNumber}`,
     );
@@ -37,15 +49,20 @@ export class ReplacementService {
     sourceBatchNumber?: string;
     status?: ReplacementStatus;
   }): Promise<ReplacementProgress[]> {
-    const query = this.replacementRepository.createQueryBuilder('rp')
+    const query = this.replacementRepository
+      .createQueryBuilder('rp')
       .leftJoinAndSelect('rp.bondingReject', 'br');
 
     if (filters?.sourceDept) {
-      query.andWhere('rp.source_dept = :sourceDept', { sourceDept: filters.sourceDept });
+      query.andWhere('rp.source_dept = :sourceDept', {
+        sourceDept: filters.sourceDept,
+      });
     }
 
     if (filters?.targetDept) {
-      query.andWhere('rp.target_dept = :targetDept', { targetDept: filters.targetDept });
+      query.andWhere('rp.target_dept = :targetDept', {
+        targetDept: filters.targetDept,
+      });
     }
 
     if (filters?.sourceBatchNumber) {
@@ -76,7 +93,10 @@ export class ReplacementService {
     return replacement;
   }
 
-  async update(id: string, updateDto: UpdateReplacementDto): Promise<ReplacementProgress> {
+  async update(
+    id: string,
+    updateDto: UpdateReplacementDto,
+  ): Promise<ReplacementProgress> {
     const replacement = await this.findOne(id);
 
     // Validate processedQty doesn't exceed requestedQty
@@ -107,11 +127,17 @@ export class ReplacementService {
     return updated;
   }
 
-  async updateProcessedQty(id: string, processedQty: number): Promise<ReplacementProgress> {
+  async updateProcessedQty(
+    id: string,
+    processedQty: number,
+  ): Promise<ReplacementProgress> {
     return this.update(id, { processedQty });
   }
 
-  async updateStatus(id: string, status: ReplacementStatus): Promise<ReplacementProgress> {
+  async updateStatus(
+    id: string,
+    status: ReplacementStatus,
+  ): Promise<ReplacementProgress> {
     const replacement = await this.findOne(id);
     replacement.status = status;
 
@@ -136,28 +162,55 @@ export class ReplacementService {
     const query = this.replacementRepository.createQueryBuilder('rp');
 
     if (filters?.sourceDept) {
-      query.andWhere('rp.source_dept = :sourceDept', { sourceDept: filters.sourceDept });
+      query.andWhere('rp.source_dept = :sourceDept', {
+        sourceDept: filters.sourceDept,
+      });
     }
 
     if (filters?.targetDept) {
-      query.andWhere('rp.target_dept = :targetDept', { targetDept: filters.targetDept });
+      query.andWhere('rp.target_dept = :targetDept', {
+        targetDept: filters.targetDept,
+      });
     }
 
     if (filters?.startDate) {
-      query.andWhere('rp.created_at >= :startDate', { startDate: filters.startDate });
+      query.andWhere('rp.created_at >= :startDate', {
+        startDate: filters.startDate,
+      });
     }
 
     if (filters?.endDate) {
       query.andWhere('rp.created_at <= :endDate', { endDate: filters.endDate });
     }
 
-    const [total, pending, inProgress, completed, cancelled] = await Promise.all([
-      query.getCount(),
-      query.clone().andWhere('rp.status = :status', { status: ReplacementStatus.PENDING }).getCount(),
-      query.clone().andWhere('rp.status = :status', { status: ReplacementStatus.IN_PROGRESS }).getCount(),
-      query.clone().andWhere('rp.status = :status', { status: ReplacementStatus.COMPLETED }).getCount(),
-      query.clone().andWhere('rp.status = :status', { status: ReplacementStatus.CANCELLED }).getCount(),
-    ]);
+    const [total, pending, inProgress, completed, cancelled] =
+      await Promise.all([
+        query.getCount(),
+        query
+          .clone()
+          .andWhere('rp.status = :status', {
+            status: ReplacementStatus.PENDING,
+          })
+          .getCount(),
+        query
+          .clone()
+          .andWhere('rp.status = :status', {
+            status: ReplacementStatus.IN_PROGRESS,
+          })
+          .getCount(),
+        query
+          .clone()
+          .andWhere('rp.status = :status', {
+            status: ReplacementStatus.COMPLETED,
+          })
+          .getCount(),
+        query
+          .clone()
+          .andWhere('rp.status = :status', {
+            status: ReplacementStatus.CANCELLED,
+          })
+          .getCount(),
+      ]);
 
     const totalRequested = await query
       .select('SUM(rp.requested_qty)', 'sum')

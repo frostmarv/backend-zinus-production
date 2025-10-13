@@ -1,3 +1,4 @@
+// src/modules/bonding-reject/bonding-reject.service.ts
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -21,13 +22,12 @@ export class BondingRejectService {
 
   /**
    * Generate batch number format: BND-YYYYMMDD-SHIFT-GROUP-XXXX
-   * Example: BND-20250109-A-A-0001
+   * Example: BND-20250109-1-A-0001
    */
   async generateBatchNumber(shift: string, group: string): Promise<string> {
     const datePart = dayjs().format('YYYYMMDD');
     const prefix = `BND-${datePart}-${shift}-${group}`;
 
-    // Find the last batch number with this prefix
     const lastBatch = await this.bondingRejectRepository
       .createQueryBuilder('br')
       .where('br.batch_number LIKE :prefix', { prefix: `${prefix}-%` })
@@ -36,8 +36,10 @@ export class BondingRejectService {
 
     let sequence = 1;
     if (lastBatch) {
-      const lastSequence = lastBatch.batchNumber.split('-').pop();
-      sequence = parseInt(lastSequence, 10) + 1;
+      const lastSequence = lastBatch.batch_number.split('-').pop();
+      if (lastSequence) {
+        sequence = parseInt(lastSequence, 10) + 1;
+      }
     }
 
     const sequenceStr = sequence.toString().padStart(4, '0');
@@ -49,20 +51,34 @@ export class BondingRejectService {
       `Creating bonding reject record for shift ${createDto.shift}, group ${createDto.group}`,
     );
 
-    const batchNumber = await this.generateBatchNumber(
+    const batch_number = await this.generateBatchNumber(
       createDto.shift,
       createDto.group,
     );
 
+    // ✅ Eksplisit: semua field disalin satu per satu, termasuk description
     const bondingReject = this.bondingRejectRepository.create({
-      ...createDto,
-      batchNumber,
-      timestamp: new Date(),
+      batch_number,
+      timestamp: new Date(createDto.timestamp),
+      shift: createDto.shift,
+      group: createDto.group,
+      time_slot: createDto.time_slot,
+      kashift: createDto.kashift,
+      admin: createDto.admin,
+      customer: createDto.customer,
+      po_number: createDto.po_number,
+      sku: createDto.sku,
+      s_code: createDto.s_code,
+      description: createDto.description ?? null, // ✅ undefined → null
+      ng_quantity: createDto.ng_quantity,
+      reason: createDto.reason,
       status: BondingRejectStatus.PENDING,
     });
 
     const saved = await this.bondingRejectRepository.save(bondingReject);
-    this.logger.log(`Created bonding reject with batch number: ${batchNumber}`);
+    this.logger.log(
+      `Created bonding reject with batch number: ${batch_number}`,
+    );
 
     return saved;
   }
@@ -115,14 +131,14 @@ export class BondingRejectService {
     return bondingReject;
   }
 
-  async findByBatchNumber(batchNumber: string): Promise<BondingReject> {
+  async findByBatchNumber(batch_number: string): Promise<BondingReject> {
     const bondingReject = await this.bondingRejectRepository.findOne({
-      where: { batchNumber },
+      where: { batch_number },
     });
 
     if (!bondingReject) {
       throw new NotFoundException(
-        `Bonding reject with batch number ${batchNumber} not found`,
+        `Bonding reject with batch number ${batch_number} not found`,
       );
     }
 
@@ -134,12 +150,10 @@ export class BondingRejectService {
     updateDto: UpdateBondingRejectDto,
   ): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
-
+    // ✅ Jika updateDto berisi description, akan ikut terupdate
     Object.assign(bondingReject, updateDto);
-
     const updated = await this.bondingRejectRepository.save(bondingReject);
     this.logger.log(`Updated bonding reject ${id}, status: ${updated.status}`);
-
     return updated;
   }
 
@@ -149,28 +163,19 @@ export class BondingRejectService {
   ): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
     bondingReject.status = status;
-
     const updated = await this.bondingRejectRepository.save(bondingReject);
     this.logger.log(`Updated bonding reject ${id} status to ${status}`);
-
     return updated;
   }
 
-  /**
-   * Add image metadata to bonding reject record
-   */
   async addImages(id: string, images: ImageMetadata[]): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
-
     if (!bondingReject.images) {
       bondingReject.images = [];
     }
-
     bondingReject.images.push(...images);
-
     const updated = await this.bondingRejectRepository.save(bondingReject);
     this.logger.log(`Added ${images.length} images to bonding reject ${id}`);
-
     return updated;
   }
 

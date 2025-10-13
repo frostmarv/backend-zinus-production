@@ -1,4 +1,3 @@
-// src/modules/bonding-reject/entities/bonding-reject.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -15,12 +14,11 @@ export enum BondingRejectStatus {
   CANCELLED = 'CANCELLED',
 }
 
-// Interface untuk struktur gambar (opsional, bisa juga pakai JSON)
 export interface ImageMetadata {
   filename: string;
   driveFileId: string;
   driveLink: string;
-  size: number; // dalam bytes
+  size: number;
   uploadedAt: Date;
 }
 
@@ -29,66 +27,75 @@ export class BondingReject {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // ❌ HAPUS batchNumber karena tidak dikirim dari form
-  // Jika tetap butuh, generate otomatis di backend (misal: BR-{timestamp}-{id})
+  @Column({
+    name: 'batch_number',
+    type: 'varchar',
+    unique: true,
+    nullable: true,
+  })
+  batch_number: string | null;
 
-  @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({
+    name: 'timestamp',
+    type: 'datetime',
+    default: () => 'CURRENT_TIMESTAMP',
+  })
   timestamp: Date;
 
   @Column({ type: 'varchar' })
-  shift: string; // ✅ Sesuai form (kirim string '1' atau '2')
+  shift: string;
 
   @Column({ type: 'varchar' })
-  group: string; // ✅ Sesuai form ('A' atau 'B')
+  group: string;
 
-  @Column({ name: 'time_slot' })
-  timeSlot: string;
+  @Column({ name: 'time_slot', type: 'varchar' })
+  time_slot: string;
 
-  // ❌ HAPUS machine karena sudah dihapus di form
-  // @Column({ nullable: true })
-  // machine: string;
-
-  @Column()
+  @Column({ type: 'varchar' })
   kashift: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   admin: string;
 
-  @Column()
+  @Column({ type: 'varchar' })
   customer: string;
 
-  @Column({ name: 'po_number' })
-  poNumber: string;
+  @Column({ name: 'po_number', type: 'varchar' })
+  po_number: string;
 
-  // ❌ HAPUS customerPo karena sudah dihapus di form
-  // @Column({ name: 'customer_po' })
-  // customerPo: string;
-
-  @Column()
+  @Column({ type: 'varchar' })
   sku: string;
 
-  @Column({ name: 's_code' })
-  sCode: string;
+  @Column({ name: 's_code', type: 'varchar' })
+  s_code: string;
+
+  // ✅ TAMBAHKAN KOLON DESCRIPTION DI SINI
+  @Column({ type: 'text', nullable: true })
+  description: string | null;
 
   @Column({ name: 'ng_quantity', type: 'int' })
-  ngQuantity: number;
+  ng_quantity: number;
 
   @Column({ type: 'text' })
   reason: string;
 
-  // ✅ Update field images: simpan array metadata dari Google Drive
-  @Column({ type: 'json', nullable: true })
-  images?: ImageMetadata[]; // Array dari metadata gambar di Google Drive
+  @Column({
+    type: 'json',
+    nullable: true,
+    default: null,
+  })
+  images?: ImageMetadata[] | null;
 
   @Column({
     type: 'varchar',
+    length: 30,
     default: BondingRejectStatus.PENDING,
   })
   status: BondingRejectStatus;
 
   @CreateDateColumn({ name: 'created_at' })
-  createdAt: Date;
+  created_at: Date;
 
   @UpdateDateColumn({ name: 'updated_at' })
-  updatedAt: Date;
+  updated_at: Date;
 }

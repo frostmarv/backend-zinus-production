@@ -10,9 +10,9 @@ DROP VIEW IF EXISTS v_production_planning_foam;
 DROP VIEW IF EXISTS v_production_planning_spring;
 DROP VIEW IF EXISTS v_workable_bonding;
 DROP VIEW IF EXISTS v_workable_bonding_detail;
+DROP VIEW IF EXISTS v_workable_bonding_ng;
 
--- VIEW 1: Assembly Layers
--- Note: Order by p.sku and al.layer_index when querying this view
+-- VIEW 1: Assembly Layers (tidak berubah)
 CREATE VIEW v_assembly_layers AS
 SELECT
     p.item_number AS "Item Number",
@@ -25,8 +25,7 @@ SELECT
 FROM assembly_layers al
 JOIN products p ON al.productProductId = p.product_id;
 
--- VIEW 2: Cascading Master (dengan F.CODE, S.CODE, dan Description)
--- Note: This view is denormalized - one production item can have multiple rows (one per assembly layer)
+-- VIEW 2: Cascading Master (tidak berubah)
 CREATE VIEW v_cascading_master AS
 SELECT
     poi.item_id,
@@ -49,7 +48,7 @@ LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
 WHERE c.is_active = 1
   AND p.is_active = 1;
 
--- VIEW 3: Production Planning - FOAM Products Only
+-- VIEW 3: Production Planning - FOAM (tidak berubah)
 CREATE VIEW v_production_planning_foam AS
 SELECT
     c.customer_name AS "Ship to Name",
@@ -74,7 +73,7 @@ JOIN products p ON poi.productProductId = p.product_id
 WHERE p.category = 'FOAM'
 ORDER BY po.po_number, poi.item_id;
 
--- VIEW 4: Production Planning - SPRING Products Only
+-- VIEW 4: Production Planning - SPRING (tidak berubah)
 CREATE VIEW v_production_planning_spring AS
 SELECT
     c.customer_name AS "Ship to Name",
@@ -99,147 +98,134 @@ JOIN products p ON poi.productProductId = p.product_id
 WHERE p.category = 'SPRING'
 ORDER BY po.po_number, poi.item_id;
 
--- VIEW 5: Workable Bonding (production progress tracking)
--- UPDATED: Tambah kolom bonding, workable = cutting result, remain = order - bonding
--- FILTER: Only FOAM products (SPRING excluded)
+-- VIEW 5: Workable Bonding (REAL-TIME, KONSISTEN, TANPA CUSTOMER PO)
 CREATE VIEW v_workable_bonding AS
 WITH planned_orders AS (
-  -- Base: All production orders with their planned quantities (FOAM only)
   SELECT 
-    po.customer_po AS customerPO,
     c.customer_name AS shipToName,
     p.sku,
     poi.week_number AS week,
-    poi.planned_qty AS quantityOrder
+    SUM(poi.planned_qty) AS quantityOrder
   FROM production_order_items poi
   JOIN production_orders po ON poi.orderOrderId = po.order_id
   JOIN customers c ON po.customerCustomerId = c.customer_id
   JOIN products p ON poi.productProductId = p.product_id
   WHERE poi.week_number IS NOT NULL
     AND p.category = 'FOAM'
+  GROUP BY p.sku, poi.week_number
 ),
 
 layer_requirements AS (
-  -- Get layer requirements for each SKU
   SELECT 
-    po.customerPO,
+    po.shipToName,
     po.sku,
     po.week,
-    po.shipToName,
     po.quantityOrder,
-    al.second_item_number AS s_code,
-    al.layer_index
+    COALESCE(al.second_item_number, 'MAIN') AS s_code,
+    COALESCE(al.layer_index, 1) AS layer_index
   FROM planned_orders po
   JOIN products p ON po.sku = p.sku
   LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
 ),
 
 cutting_actuals AS (
-  -- Calculate actual production per layer from cutting
   SELECT 
-    pce.customerPO,
     pce.sku,
-    pce.sCode AS s_code,
     pce.week,
+    COALESCE(pce.sCode, 'MAIN') AS s_code,
     SUM(pce.quantityProduksi) AS actual_qty
   FROM production_cutting_entries pce
-  WHERE pce.sCode IS NOT NULL AND pce.sCode != ''
-  GROUP BY pce.customerPO, pce.sku, pce.sCode, pce.week
+  WHERE pce.sku IN (SELECT sku FROM products WHERE category = 'FOAM')
+    AND pce.week IS NOT NULL
+  GROUP BY pce.sku, pce.week, COALESCE(pce.sCode, 'MAIN')
 ),
 
-layer_status AS (
-  -- Join requirements with cutting actuals
+ng_per_layer AS (
   SELECT 
-    r.customerPO,
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(br.ng_quantity) AS ng_qty
+  FROM bonding_reject br
+  WHERE br.status != 'CANCELLED'
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+replacement_per_layer AS (
+  SELECT 
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+  FROM bonding_reject br
+  LEFT JOIN replacement_progress rp 
+    ON br.id = rp.bonding_reject_id
+  WHERE br.status != 'CANCELLED'
+    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+net_ng_per_layer AS (
+  SELECT 
+    ng.sku,
+    ng.s_code,
+    ng.ng_qty,
+    COALESCE(rp.replacement_qty, 0) AS replacement_qty,
+    MAX(ng.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS net_ng_qty
+  FROM ng_per_layer ng
+  LEFT JOIN replacement_per_layer rp 
+    ON ng.sku = rp.sku AND ng.s_code = rp.s_code
+),
+
+layer_net AS (
+  SELECT 
     r.shipToName,
     r.sku,
     r.week,
     r.quantityOrder,
     r.s_code,
     r.layer_index,
-    COALESCE(a.actual_qty, 0) AS actual_qty
+    COALESCE(ca.actual_qty, 0) AS cutting_qty,
+    COALESCE(ca.actual_qty, 0) - COALESCE(ng.net_ng_qty, 0) AS net_qty
   FROM layer_requirements r
-  LEFT JOIN cutting_actuals a 
-    ON r.customerPO = a.customerPO 
-    AND r.sku = a.sku 
-    AND r.s_code = a.s_code 
-    AND r.week = a.week
+  LEFT JOIN cutting_actuals ca 
+    ON r.sku = ca.sku AND r.week = ca.week AND r.s_code = ca.s_code
+  LEFT JOIN net_ng_per_layer ng
+    ON r.sku = ng.sku AND r.s_code = ng.s_code
+),
+
+min_net_per_group AS (
+  SELECT 
+    sku,
+    week,
+    MIN(net_qty) AS min_net_qty
+  FROM layer_net
+  GROUP BY sku, week
 ),
 
 bonding_actuals AS (
-  -- Calculate total bonding production per SKU
   SELECT 
-    bs.customer_po AS customerPO,
     bs.sku,
+    bs.week,
     SUM(bs.quantity_produksi) AS bonding_qty
   FROM bonding_summary bs
-  GROUP BY bs.customer_po, bs.sku
+  GROUP BY bs.sku, bs.week
 ),
 
-ng_totals AS (
-  -- Calculate total NG (reject) per SKU
+final_data AS (
   SELECT 
-    br.customer_po AS customerPO,
-    br.sku,
-    SUM(br.ng_quantity) AS ng_qty
-  FROM bonding_reject br
-  WHERE br.status != 'CANCELLED'
-  GROUP BY br.customer_po, br.sku
-),
-
-replacement_totals AS (
-  -- Calculate total replacement yang sudah diproses dari cutting
-  SELECT 
-    br.customer_po AS customerPO,
-    br.sku,
-    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
-  FROM bonding_reject br
-  LEFT JOIN replacement_progress rp ON br.id = rp.bonding_reject_id
-  WHERE br.status != 'CANCELLED'
-    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
-  GROUP BY br.customer_po, br.sku
-),
-
-workable_check AS (
-  SELECT 
-    ls.customerPO,
-    ls.shipToName,
-    ls.sku,
-    ls.week,
-    MAX(ls.quantityOrder) AS quantityOrder,
-    -- Workable = minimum of all layers (bottleneck dari cutting)
-    COALESCE(MIN(ls.actual_qty), 0) AS workable,
-    -- Bonding = total yang sudah diproduksi di bonding
+    ln.shipToName,
+    ln.sku,
+    ln.week,
+    MAX(ln.quantityOrder) AS quantityOrder,
+    MAX(ln.cutting_qty) AS max_cutting,
+    COALESCE(mn.min_net_qty, 0) AS min_net_qty,
     COALESCE(ba.bonding_qty, 0) AS bonding,
-    -- NG = total reject dari bonding
-    COALESCE(ng.ng_qty, 0) AS ng,
-    -- Replacement = total yang sudah diganti dari cutting
-    COALESCE(rt.replacement_qty, 0) AS replacement,
-    -- NG Active = NG yang belum diganti (ng - replacement)
-    COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0) AS ng_active,
-    -- Remain = workable - bonding - ng_active (sisa material yang bisa dikerjakan bonding)
-    COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0)) AS remain,
-    CASE 
-      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0))) <= 0 THEN 'Completed'
-      WHEN COALESCE(MIN(ls.actual_qty), 0) < MAX(ls.quantityOrder) THEN 'Running'
-      ELSE 'Not Started'
-    END AS status,
-    CASE 
-      WHEN (COALESCE(MIN(ls.actual_qty), 0) - COALESCE(ba.bonding_qty, 0) - (COALESCE(ng.ng_qty, 0) - COALESCE(rt.replacement_qty, 0))) <= 0 THEN 'Bonding completed'
-      WHEN COALESCE(MIN(ls.actual_qty), 0) < MAX(ls.quantityOrder) THEN 'Cutting in progress'
-      ELSE 'Waiting for cutting'
-    END AS remarks
-  FROM layer_status ls
+    MAX(ln.quantityOrder) - COALESCE(ba.bonding_qty, 0) AS "Remain Produksi"
+  FROM layer_net ln
+  LEFT JOIN min_net_per_group mn 
+    ON ln.sku = mn.sku AND ln.week = mn.week
   LEFT JOIN bonding_actuals ba 
-    ON ls.customerPO = ba.customerPO 
-    AND ls.sku = ba.sku
-  LEFT JOIN ng_totals ng
-    ON ls.customerPO = ng.customerPO
-    AND ls.sku = ng.sku
-  LEFT JOIN replacement_totals rt
-    ON ls.customerPO = rt.customerPO
-    AND ls.sku = rt.sku
-  GROUP BY ls.customerPO, ls.shipToName, ls.sku, ls.week, ba.bonding_qty, ng.ng_qty, rt.replacement_qty
+    ON ln.sku = ba.sku AND ln.week = ba.week
+  GROUP BY ln.shipToName, ln.sku, ln.week, mn.min_net_qty, ba.bonding_qty
 )
 
 SELECT 
@@ -247,149 +233,161 @@ SELECT
   shipToName,
   sku,
   quantityOrder,
-  workable,
+  CASE 
+    WHEN min_net_qty - bonding > 0 THEN min_net_qty - bonding 
+    ELSE 0 
+  END AS workable,
   bonding,
-  ng,
-  replacement,
-  ng_active,
-  remain,
-  remarks,
-  status
-FROM workable_check
+  "Remain Produksi",
+  CASE 
+    WHEN "Remain Produksi" <= 0 THEN 'Completed'
+    WHEN max_cutting > 0 THEN 'Running'
+    ELSE 'Not Started'
+  END AS status,
+  CASE 
+    WHEN "Remain Produksi" <= 0 THEN 'Bonding completed'
+    WHEN max_cutting > 0 THEN 'Cutting in progress'
+    ELSE 'Waiting for cutting'
+  END AS remarks
+FROM final_data
 ORDER BY shipToName COLLATE NOCASE, sku COLLATE NOCASE;
 
--- VIEW 6: Workable Bonding Detail (layer breakdown)
--- UPDATED: Tambah kolom bonding, workable = min cutting, remain = order - bonding
--- FILTER: Only FOAM products (SPRING excluded)
+-- VIEW 6: Workable Bonding Detail (REAL-TIME & KONSISTEN)
 CREATE VIEW v_workable_bonding_detail AS
 WITH planned_orders AS (
-  -- Base: All production orders (FOAM only)
   SELECT 
-    po.customer_po AS customerPO,
     c.customer_name AS shipToName,
     p.sku,
     poi.week_number AS week,
-    poi.planned_qty AS quantityOrder
+    SUM(poi.planned_qty) AS quantityOrder
   FROM production_order_items poi
   JOIN production_orders po ON poi.orderOrderId = po.order_id
   JOIN customers c ON po.customerCustomerId = c.customer_id
   JOIN products p ON poi.productProductId = p.product_id
   WHERE poi.week_number IS NOT NULL
     AND p.category = 'FOAM'
+  GROUP BY p.sku, poi.week_number
 ),
 
 layer_requirements AS (
-  -- Get all required layers per SKU
   SELECT 
-    po.customerPO,
     po.shipToName,
     po.sku,
     po.week,
     po.quantityOrder,
-    al.second_item_number AS s_code,
-    al.layer_index
+    COALESCE(al.second_item_number, 'MAIN') AS s_code,
+    COALESCE(al.layer_index, 1) AS layer_index
   FROM planned_orders po
   JOIN products p ON po.sku = p.sku
   LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
 ),
 
 cutting_actuals AS (
-  -- Calculate actual production per layer from cutting
   SELECT 
-    pce.customerPO,
     pce.sku,
-    pce.sCode AS s_code,
     pce.week,
+    COALESCE(pce.sCode, 'MAIN') AS s_code,
     SUM(pce.quantityProduksi) AS actual_qty
   FROM production_cutting_entries pce
-  WHERE pce.sCode IS NOT NULL AND pce.sCode != ''
-  GROUP BY pce.customerPO, pce.sku, pce.sCode, pce.week
+  WHERE pce.sku IN (SELECT sku FROM products WHERE category = 'FOAM')
+    AND pce.week IS NOT NULL
+  GROUP BY pce.sku, pce.week, COALESCE(pce.sCode, 'MAIN')
 ),
 
-layer_data AS (
-  -- Join requirements with cutting actuals
+ng_per_layer AS (
   SELECT 
-    r.customerPO,
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(br.ng_quantity) AS ng_qty
+  FROM bonding_reject br
+  WHERE br.status != 'CANCELLED'
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+replacement_per_layer AS (
+  SELECT 
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+  FROM bonding_reject br
+  LEFT JOIN replacement_progress rp 
+    ON br.id = rp.bonding_reject_id
+  WHERE br.status != 'CANCELLED'
+    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+net_ng_per_layer AS (
+  SELECT 
+    ng.sku,
+    ng.s_code,
+    ng.ng_qty,
+    COALESCE(rp.replacement_qty, 0) AS replacement_qty,
+    MAX(ng.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS net_ng_qty
+  FROM ng_per_layer ng
+  LEFT JOIN replacement_per_layer rp 
+    ON ng.sku = rp.sku AND ng.s_code = rp.s_code
+),
+
+layer_net AS (
+  SELECT 
     r.shipToName,
     r.sku,
     r.week,
     r.quantityOrder,
     r.s_code,
     r.layer_index,
-    COALESCE(a.actual_qty, 0) AS actual_qty
+    COALESCE(ca.actual_qty, 0) AS cutting_qty,
+    COALESCE(ca.actual_qty, 0) - COALESCE(ng.net_ng_qty, 0) AS net_qty
   FROM layer_requirements r
-  LEFT JOIN cutting_actuals a 
-    ON r.customerPO = a.customerPO 
-    AND r.sku = a.sku 
-    AND r.s_code = a.s_code 
-    AND r.week = a.week
+  LEFT JOIN cutting_actuals ca 
+    ON r.sku = ca.sku AND r.week = ca.week AND r.s_code = ca.s_code
+  LEFT JOIN net_ng_per_layer ng
+    ON r.sku = ng.sku AND r.s_code = ng.s_code
+),
+
+min_net_per_group AS (
+  SELECT 
+    sku,
+    week,
+    MIN(net_qty) AS min_net_qty
+  FROM layer_net
+  GROUP BY sku, week
 ),
 
 bonding_actuals AS (
-  -- Calculate total bonding production per SKU
   SELECT 
-    bs.customer_po AS customerPO,
     bs.sku,
+    bs.week,
     SUM(bs.quantity_produksi) AS bonding_qty
   FROM bonding_summary bs
-  GROUP BY bs.customer_po, bs.sku
+  GROUP BY bs.sku, bs.week
 ),
 
-ng_totals AS (
-  -- Calculate total NG (reject) per SKU
+final_pivot AS (
   SELECT 
-    br.customer_po AS customerPO,
-    br.sku,
-    SUM(br.ng_quantity) AS ng_qty
-  FROM bonding_reject br
-  WHERE br.status != 'CANCELLED'
-  GROUP BY br.customer_po, br.sku
-),
-
-replacement_totals AS (
-  -- Calculate total replacement yang sudah diproses dari cutting
-  SELECT 
-    br.customer_po AS customerPO,
-    br.sku,
-    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
-  FROM bonding_reject br
-  LEFT JOIN replacement_progress rp ON br.id = rp.bonding_reject_id
-  WHERE br.status != 'CANCELLED'
-    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
-  GROUP BY br.customer_po, br.sku
-),
-
-pivot_data AS (
-  SELECT 
-    ld.customerPO,
-    ld.shipToName,
-    ld.sku,
-    ld.week,
-    MAX(ld.quantityOrder) AS quantityOrder,
-    MAX(CASE WHEN ld.layer_index = 1 THEN ld.actual_qty END) AS "Layer 1",
-    MAX(CASE WHEN ld.layer_index = 2 THEN ld.actual_qty END) AS "Layer 2",
-    MAX(CASE WHEN ld.layer_index = 3 THEN ld.actual_qty END) AS "Layer 3",
-    MAX(CASE WHEN ld.layer_index = 4 THEN ld.actual_qty END) AS "Layer 4",
-    MAX(CASE WHEN ld.layer_index = 5 THEN ld.actual_qty END) AS "Hole",
-    COALESCE(MIN(ld.actual_qty), 0) AS workable,
+    ln.shipToName,
+    ln.sku,
+    ln.week,
+    MAX(ln.quantityOrder) AS quantityOrder,
+    MAX(ln.cutting_qty) AS max_cutting,
+    MAX(CASE WHEN ln.layer_index = 1 THEN ln.net_qty END) AS "Layer 1",
+    MAX(CASE WHEN ln.layer_index = 2 THEN ln.net_qty END) AS "Layer 2",
+    MAX(CASE WHEN ln.layer_index = 3 THEN ln.net_qty END) AS "Layer 3",
+    MAX(CASE WHEN ln.layer_index = 4 THEN ln.net_qty END) AS "Layer 4",
+    MAX(CASE WHEN ln.layer_index = 5 THEN ln.net_qty END) AS "Hole",
+    COALESCE(mn.min_net_qty, 0) AS min_net_qty,
     COALESCE(ba.bonding_qty, 0) AS bonding,
-    COALESCE(ng.ng_qty, 0) AS ng,
-    COALESCE(rt.replacement_qty, 0) AS replacement
-  FROM layer_data ld
+    MAX(ln.quantityOrder) - COALESCE(ba.bonding_qty, 0) AS "Remain Produksi"
+  FROM layer_net ln
+  LEFT JOIN min_net_per_group mn 
+    ON ln.sku = mn.sku AND ln.week = mn.week
   LEFT JOIN bonding_actuals ba 
-    ON ld.customerPO = ba.customerPO 
-    AND ld.sku = ba.sku
-  LEFT JOIN ng_totals ng
-    ON ld.customerPO = ng.customerPO
-    AND ld.sku = ng.sku
-  LEFT JOIN replacement_totals rt
-    ON ld.customerPO = rt.customerPO
-    AND ld.sku = rt.sku
-  GROUP BY ld.customerPO, ld.shipToName, ld.sku, ld.week, ba.bonding_qty, ng.ng_qty, rt.replacement_qty
+    ON ln.sku = ba.sku AND ln.week = ba.week
+  GROUP BY ln.shipToName, ln.sku, ln.week, mn.min_net_qty, ba.bonding_qty
 )
 
 SELECT 
-  customerPO,
   shipToName,
   sku,
   week,
@@ -399,21 +397,140 @@ SELECT
   COALESCE("Layer 3", 0) AS "Layer 3",
   COALESCE("Layer 4", 0) AS "Layer 4",
   COALESCE("Hole", 0) AS "Hole",
-  workable,
-  bonding,
-  ng,
-  replacement,
-  ng - replacement AS ng_active,
-  workable - bonding - (ng - replacement) AS remain,
   CASE 
-    WHEN (workable - bonding - (ng - replacement)) <= 0 THEN 'Completed'
-    WHEN workable < quantityOrder THEN 'Running'
+    WHEN min_net_qty - bonding > 0 THEN min_net_qty - bonding 
+    ELSE 0 
+  END AS workable,
+  bonding,
+  "Remain Produksi",
+  CASE 
+    WHEN "Remain Produksi" <= 0 THEN 'Completed'
+    WHEN max_cutting > 0 THEN 'Running'
     ELSE 'Not Started'
   END AS status,
   CASE 
-    WHEN (workable - bonding - (ng - replacement)) <= 0 THEN 'Bonding completed'
-    WHEN workable < quantityOrder THEN 'Cutting in progress'
+    WHEN "Remain Produksi" <= 0 THEN 'Bonding completed'
+    WHEN max_cutting > 0 THEN 'Cutting in progress'
     ELSE 'Waiting for cutting'
   END AS remarks
-FROM pivot_data
+FROM final_pivot
 ORDER BY shipToName COLLATE NOCASE, sku COLLATE NOCASE;
+
+-- VIEW 7: Workable Bonding NG (Tracking NG & Replacement - REAL-TIME)
+CREATE VIEW v_workable_bonding_ng AS
+WITH planned_orders AS (
+  SELECT 
+    c.customer_name AS shipToName,
+    p.sku,
+    poi.week_number AS week,
+    SUM(poi.planned_qty) AS quantityOrder
+  FROM production_order_items poi
+  JOIN production_orders po ON poi.orderOrderId = po.order_id
+  JOIN customers c ON po.customerCustomerId = c.customer_id
+  JOIN products p ON poi.productProductId = p.product_id
+  WHERE poi.week_number IS NOT NULL
+    AND p.category = 'FOAM'
+  GROUP BY p.sku, poi.week_number
+),
+
+layer_map AS (
+  SELECT 
+    p.sku,
+    COALESCE(al.second_item_number, 'MAIN') AS s_code,
+    COALESCE(al.layer_index, 1) AS layer_index
+  FROM products p
+  LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
+  WHERE p.category = 'FOAM'
+),
+
+ng_raw AS (
+  SELECT 
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(br.ng_quantity) AS ng_qty
+  FROM bonding_reject br
+  WHERE br.status != 'CANCELLED'
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+replacement_raw AS (
+  SELECT 
+    br.sku,
+    COALESCE(br.s_code, 'MAIN') AS s_code,
+    SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+  FROM bonding_reject br
+  LEFT JOIN replacement_progress rp 
+    ON br.id = rp.bonding_reject_id
+  WHERE br.status != 'CANCELLED'
+    AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
+  GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
+),
+
+net_ng_with_layer AS (
+  SELECT 
+    ng.sku,
+    ng.s_code,
+    lm.layer_index,
+    MAX(ng.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS net_ng_qty,
+    COALESCE(rp.replacement_qty, 0) AS replacement_qty
+  FROM ng_raw ng
+  JOIN layer_map lm 
+    ON ng.sku = lm.sku AND ng.s_code = lm.s_code
+  LEFT JOIN replacement_raw rp 
+    ON ng.sku = rp.sku AND ng.s_code = rp.s_code
+),
+
+combined AS (
+  SELECT 
+    po.shipToName,
+    po.sku,
+    po.week,
+    po.quantityOrder,
+    ng.layer_index,
+    ng.net_ng_qty AS ng_qty,
+    ng.replacement_qty
+  FROM planned_orders po
+  JOIN net_ng_with_layer ng 
+    ON po.sku = ng.sku
+),
+
+pivoted AS (
+  SELECT 
+    shipToName,
+    sku,
+    week,
+    MAX(quantityOrder) AS quantityOrder,
+    SUM(CASE WHEN layer_index = 1 THEN ng_qty ELSE 0 END) AS "NG Layer 1",
+    SUM(CASE WHEN layer_index = 2 THEN ng_qty ELSE 0 END) AS "NG Layer 2",
+    SUM(CASE WHEN layer_index = 3 THEN ng_qty ELSE 0 END) AS "NG Layer 3",
+    SUM(CASE WHEN layer_index = 4 THEN ng_qty ELSE 0 END) AS "NG Layer 4",
+    SUM(CASE WHEN layer_index = 5 THEN ng_qty ELSE 0 END) AS "NG Hole",
+    SUM(CASE WHEN layer_index = 1 THEN replacement_qty ELSE 0 END) AS "Replacement Layer 1",
+    SUM(CASE WHEN layer_index = 2 THEN replacement_qty ELSE 0 END) AS "Replacement Layer 2",
+    SUM(CASE WHEN layer_index = 3 THEN replacement_qty ELSE 0 END) AS "Replacement Layer 3",
+    SUM(CASE WHEN layer_index = 4 THEN replacement_qty ELSE 0 END) AS "Replacement Layer 4",
+    SUM(CASE WHEN layer_index = 5 THEN replacement_qty ELSE 0 END) AS "Replacement Hole"
+  FROM combined
+  GROUP BY shipToName, sku, week
+)
+
+SELECT 
+  po.shipToName,
+  po.sku,
+  po.week,
+  po.quantityOrder,
+  COALESCE(pv."NG Layer 1", 0) AS "NG Layer 1",
+  COALESCE(pv."NG Layer 2", 0) AS "NG Layer 2",
+  COALESCE(pv."NG Layer 3", 0) AS "NG Layer 3",
+  COALESCE(pv."NG Layer 4", 0) AS "NG Layer 4",
+  COALESCE(pv."NG Hole", 0) AS "NG Hole",
+  COALESCE(pv."Replacement Layer 1", 0) AS "Replacement Layer 1",
+  COALESCE(pv."Replacement Layer 2", 0) AS "Replacement Layer 2",
+  COALESCE(pv."Replacement Layer 3", 0) AS "Replacement Layer 3",
+  COALESCE(pv."Replacement Layer 4", 0) AS "Replacement Layer 4",
+  COALESCE(pv."Replacement Hole", 0) AS "Replacement Hole"
+FROM planned_orders po
+LEFT JOIN pivoted pv 
+  ON po.sku = pv.sku
+  AND po.week = pv.week
+ORDER BY po.shipToName COLLATE NOCASE, po.sku COLLATE NOCASE;

@@ -1,3 +1,4 @@
+// src/modules/cutting-replacement/cutting-replacement.controller.ts
 import {
   Controller,
   Get,
@@ -20,12 +21,15 @@ import { CuttingProcessStatus } from './entities/cutting-process.entity';
 @Controller('cutting/replacement')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
 export class CuttingReplacementController {
-  constructor(private readonly cuttingReplacementService: CuttingReplacementService) {}
+  constructor(
+    private readonly cuttingReplacementService: CuttingReplacementService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
   async create(@Body() createDto: CreateCuttingProcessDto) {
-    const cuttingProcess = await this.cuttingReplacementService.create(createDto);
+    const cuttingProcess =
+      await this.cuttingReplacementService.create(createDto);
 
     return {
       success: true,
@@ -45,12 +49,13 @@ export class CuttingReplacementController {
       machineId?: string;
     },
   ) {
-    const cuttingProcess = await this.cuttingReplacementService.processReplacement(
-      body.replacementId,
-      body.processedQty,
-      body.operatorName,
-      body.machineId,
-    );
+    const cuttingProcess =
+      await this.cuttingReplacementService.processReplacement(
+        body.replacementId,
+        body.processedQty,
+        body.operatorName,
+        body.machineId,
+      );
 
     return {
       success: true,
@@ -88,7 +93,8 @@ export class CuttingReplacementController {
     if (startDate) filters.startDate = new Date(startDate);
     if (endDate) filters.endDate = new Date(endDate);
 
-    const statistics = await this.cuttingReplacementService.getStatistics(filters);
+    const statistics =
+      await this.cuttingReplacementService.getStatistics(filters);
 
     return {
       success: true,
