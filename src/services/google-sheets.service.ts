@@ -34,10 +34,7 @@ export class GoogleSheetsService {
   }
 
   private async initializeAuth() {
-    const keyPath = path.join(
-      __dirname,
-      '../config/service-account.json',
-    );
+    const keyPath = path.join(__dirname, '../config/service-account.json');
 
     try {
       if (!fs.existsSync(keyPath)) {

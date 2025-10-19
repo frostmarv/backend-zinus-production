@@ -3,6 +3,8 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { ProductionOrderItem } from '../../entities/production-order-item.entity';
+import { ProductionOrder } from '../../entities/production-order.entity';
+import { Product } from '../../entities/product.entity';
 
 @Injectable()
 export class ProductionOrderItemService {
@@ -13,13 +15,13 @@ export class ProductionOrderItemService {
 
   findAll(): Promise<ProductionOrderItem[]> {
     return this.poiRepo.find({
-      relations: ['order', 'product'], // join untuk menampilkan relasi
+      relations: ['order', 'product'],
     });
   }
 
   async findOne(id: number): Promise<ProductionOrderItem> {
     const item = await this.poiRepo.findOne({
-      where: { item_id: id },
+      where: { itemId: id },
       relations: ['order', 'product'],
     });
     if (!item)
@@ -27,5 +29,22 @@ export class ProductionOrderItemService {
         `ProductionOrderItem dengan ID "${id}" tidak ditemukan`,
       );
     return item;
+  }
+
+  async create(createDto: {
+    order: ProductionOrder;
+    product: Product;
+    plannedQty: number;
+    sampleQty?: number;
+    weekNumber: number;
+    iD?: Date | null;
+    lD?: Date | null;
+    sD?: Date | null;
+  }): Promise<ProductionOrderItem> {
+    const item = this.poiRepo.create({
+      ...createDto,
+      sampleQty: createDto.sampleQty || 0,
+    });
+    return this.poiRepo.save(item);
   }
 }

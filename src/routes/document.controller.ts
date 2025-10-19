@@ -7,7 +7,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
-import { GoogleDriveService } from '../services/google-drive.service';
+import { GoogleDriveService } from '../services/google-drive.service'; // Pastikan path benar
 import { generateDocNumber } from '../utils/document-control.util';
 import dayjs from 'dayjs';
 import multer from 'multer';
@@ -53,15 +53,21 @@ export class DocumentController {
     const year = dayjs().format('YYYY');
     const month = dayjs().format('MM');
 
-    // Struktur folder: category/year/month
-    const categoryFolder = await this.driveService.createFolder(category);
+    // ✅ Perbaikan: Dapatkan parentId dari root folder terlebih dahulu
+    const rootFolderId = await this.driveService.getOrCreateRootFolder();
+
+    // ✅ Buat folder 'category' di bawah root
+    const categoryFolder = await this.driveService.createFolder(
+      category,
+      rootFolderId,
+    );
     const yearFolder = await this.driveService.createFolder(
       year,
-      categoryFolder.id,
+      categoryFolder.id, // ✅ parentId dari categoryFolder
     );
     const monthFolder = await this.driveService.createFolder(
       month,
-      yearFolder.id,
+      yearFolder.id, // ✅ parentId dari yearFolder
     );
 
     const uploadResults = [];

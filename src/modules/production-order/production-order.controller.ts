@@ -14,7 +14,7 @@ import { ProductionOrder } from '../../entities/production-order.entity';
 
 @Controller('production-orders')
 export class ProductionOrderController {
-  constructor(private readonly orderService: ProductionOrderService) {}
+  constructor(private readonly orderService: ProductionOrderService) {} // → Hapus customerRepo
 
   @Get()
   findAll(): Promise<ProductionOrder[]> {
@@ -37,7 +37,13 @@ export class ProductionOrderController {
       status?: string;
     },
   ): Promise<ProductionOrder> {
-    return this.orderService.create(body);
+    // 🔴 Panggil service: kirim ID, service handle sisanya
+    return this.orderService.create(
+      body.customer_id,
+      body.customer_po,
+      body.po_number,
+      body.order_date,
+    );
   }
 
   @Patch(':id')

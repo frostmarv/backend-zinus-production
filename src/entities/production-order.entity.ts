@@ -1,26 +1,36 @@
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne } from 'typeorm';
+// src/entities/production-order.entity.ts
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  ManyToOne,
+  JoinColumn,
+} from 'typeorm';
 import { Customer } from './customer.entity';
 
 @Entity('production_orders')
 export class ProductionOrder {
-  @PrimaryGeneratedColumn()
-  order_id: number;
+  @PrimaryGeneratedColumn('increment', { name: 'order_id' })
+  orderId: number;
 
-  @ManyToOne(() => Customer, customer => customer.customer_id)
+  @Column({ name: 'customerCustomerId' })
+  customerCustomerId: number;
+
+  @ManyToOne(() => Customer, (customer) => customer.customerId, {
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({
+    name: 'customerCustomerId',
+    referencedColumnName: 'customerId',
+  })
   customer: Customer;
 
-  @Column()
-  customer_po: string;
+  @Column({ name: 'customer_po' })
+  customerPo: string;
 
-  @Column({ unique: true })
-  po_number: string;
+  @Column({ name: 'po_number' })
+  poNumber: string;
 
-  @Column({ nullable: true })
-  order_date: Date;
-
-  @Column({ default: 'confirmed' })
-  status: string;
-
-  @CreateDateColumn()
-  created_at: Date;
+  @Column({ name: 'order_date', type: 'date' })
+  orderDate: Date;
 }

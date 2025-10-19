@@ -1,4 +1,3 @@
-// src/modules/cutting/dto/create-production-cutting.dto.ts
 import {
   IsString,
   IsNotEmpty,
@@ -6,6 +5,7 @@ import {
   IsArray,
   IsNumber,
   IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -43,6 +43,17 @@ export class CreateProductionCuttingEntryDto {
   @IsString()
   @IsOptional()
   week?: string;
+
+  // ✅ Tambahkan field isHole
+  @IsBoolean()
+  @IsOptional()
+  @Type(() => Boolean)
+  isHole?: boolean;
+
+  // ✅ Tambahkan field foamingDate
+  @IsString()
+  @IsOptional()
+  foamingDate?: string; // ISO string format
 }
 
 export class CreateProductionCuttingDto {

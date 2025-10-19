@@ -1,49 +1,57 @@
+// src/entities/production-order-item.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
   Column,
-  CreateDateColumn,
   ManyToOne,
+  JoinColumn,
 } from 'typeorm';
 import { ProductionOrder } from './production-order.entity';
 import { Product } from './product.entity';
 
 @Entity('production_order_items')
 export class ProductionOrderItem {
-  @PrimaryGeneratedColumn()
-  item_id: number;
+  @PrimaryGeneratedColumn('increment', { name: 'item_id' })
+  itemId: number;
 
-  @ManyToOne(() => ProductionOrder, (order) => order.order_id)
+  @Column({ name: 'orderOrderId' })
+  orderOrderId: number;
+
+  @ManyToOne(() => ProductionOrder, (order) => order.orderId, {
+    onDelete: 'CASCADE',
+  })
+  @JoinColumn({ name: 'orderOrderId', referencedColumnName: 'orderId' })
   order: ProductionOrder;
 
-  @ManyToOne(() => Product, (product) => product.product_id)
+  @Column({ name: 'productProductId' })
+  productProductId: number;
+
+  @ManyToOne(() => Product, (product) => product.productId, {
+    onDelete: 'RESTRICT',
+  })
+  @JoinColumn({ name: 'productProductId', referencedColumnName: 'productId' })
   product: Product;
 
-  @Column()
-  planned_qty: number;
+  @Column({ name: 'planned_qty' })
+  plannedQty: number;
 
-  @Column({ default: 0 })
-  sample_qty: number;
+  @Column({ name: 'sample_qty', default: 0 })
+  sampleQty: number;
 
-  @Column({
-    type: 'int',
-    asExpression: 'planned_qty + sample_qty',
-    generatedType: 'STORED',
-  })
-  total_planned: number;
+  @Column({ name: 'week_number' })
+  weekNumber: number;
 
-  @Column({ nullable: true })
-  week_number: number;
+  @Column({ name: 'i_d', type: 'date', nullable: true })
+  iD: Date | null;
 
-  @Column({ nullable: true })
-  i_d: Date;
+  @Column({ name: 'l_d', type: 'date', nullable: true })
+  lD: Date | null;
 
-  @Column({ nullable: true })
-  l_d: Date;
+  @Column({ name: 's_d', type: 'date', nullable: true })
+  sD: Date | null;
 
-  @Column({ nullable: true })
-  s_d: Date;
-
-  @CreateDateColumn()
-  created_at: Date;
+  // Virtual column: total_qty = planned_qty + sample_qty
+  get totalPlanned(): number {
+    return this.plannedQty + this.sampleQty;
+  }
 }

@@ -1,4 +1,3 @@
-// src/modules/cutting/production-cutting.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -31,9 +30,14 @@ export class ProductionCuttingRecord {
   @Column({ nullable: true })
   operator: string;
 
-  @OneToMany(() => ProductionCuttingEntry, (entry) => entry.productionCuttingRecord, {
-    cascade: true,
-  })
+  // ✅ Import entity entry yang baru
+  @OneToMany(
+    () => ProductionCuttingEntry,
+    (entry) => entry.productionCuttingRecord,
+    {
+      cascade: true,
+    },
+  )
   entries: ProductionCuttingEntry[];
 
   @CreateDateColumn()

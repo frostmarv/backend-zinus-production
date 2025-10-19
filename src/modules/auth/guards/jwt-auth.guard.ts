@@ -1,3 +1,4 @@
+// src/modules/auth/guards/jwt-auth.guard.ts
 import { Injectable, CanActivate, ExecutionContext } from '@nestjs/common';
 import { Reflector } from '@nestjs/core'; // ← dari @nestjs/core, bukan @nestjs/common
 import { AuthGuard } from '@nestjs/passport';

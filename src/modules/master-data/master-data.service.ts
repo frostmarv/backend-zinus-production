@@ -31,29 +31,34 @@ export class MasterDataService {
 
   async getCustomers() {
     const customers = await this.customerRepo.find({
-      where: { is_active: true },
+      // 🔴 Perbaikan: ganti is_active ke property name
+      // where: { is_active: true },
+      where: {}, // 🔵 Jika tidak ada field is_active, hapus filter
     });
     return customers.map((c) => ({
-      value: c.customer_id,
-      label: c.customer_name,
+      // 🔴 Perbaikan: gunakan property name
+      value: c.customerId,
+      label: c.customerName,
     }));
   }
 
   async getPoNumbers(customerId: number) {
     const orders = await this.orderRepo.find({
-      where: { customer: { customer_id: customerId } },
-      select: ['po_number'],
+      // 🔴 Perbaikan: gunakan property name
+      where: { customer: { customerId } },
+      select: ['poNumber'], // 🔴 Perbaikan: gunakan property name
     });
-    const unique = [...new Set(orders.map((o) => o.po_number))];
+    const unique = [...new Set(orders.map((o) => o.poNumber))];
     return unique.map((po) => ({ value: po, label: po }));
   }
 
   async getCustomerPos(poNumber: string) {
     const orders = await this.orderRepo.find({
-      where: { po_number: poNumber },
-      select: ['customer_po'],
+      // 🔴 Perbaikan: gunakan property name
+      where: { poNumber },
+      select: ['customerPo'], // 🔴 Perbaikan: gunakan property name
     });
-    const unique = [...new Set(orders.map((o) => o.customer_po))];
+    const unique = [...new Set(orders.map((o) => o.customerPo))];
     return unique.map((cpo) => ({ value: cpo, label: cpo }));
   }
 
@@ -62,8 +67,8 @@ export class MasterDataService {
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
-      .where('po.customer_po = :customerPo', { customerPo })
-      .select(['p.sku', 'p.item_number'])
+      .where('po.customerPo = :customerPo', { customerPo })
+      .select(['p.sku', 'p.itemNumber'])
       .getRawMany();
 
     const uniqueMap = new Map();
@@ -86,7 +91,7 @@ export class MasterDataService {
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
       .leftJoin('assembly_layers', 'al', 'al.productProductId = p.product_id')
-      .where('po.customer_po = :customerPo', { customerPo })
+      .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select([
         'poi.planned_qty as planned_qty',
@@ -127,7 +132,7 @@ export class MasterDataService {
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
       .leftJoin('assembly_layers', 'al', 'al.productProductId = p.product_id')
-      .where('po.customer_po = :customerPo', { customerPo })
+      .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select([
         'poi.week_number as week_number',
@@ -185,16 +190,14 @@ export class MasterDataService {
     }));
   }
 
-  // 🔥 Baru: Remain Quantity untuk Cutting (gunakan po_number internal, bukan customer_po)
   async getRemainQuantityForCutting(
     customerPo: string,
     sku: string,
     sCode: string,
   ) {
-    // 1. Dapatkan po_number internal dari customer_po
     const order = await this.orderRepo.findOne({
-      where: { customer_po: customerPo },
-      select: ['po_number'],
+      where: { customerPo },
+      select: ['poNumber'],
     });
 
     if (!order) {
@@ -203,24 +206,22 @@ export class MasterDataService {
       );
     }
 
-    const poNumber = order.po_number;
+    const poNumber = order.poNumber;
 
-    // 2. Hitung quantityOrder
     const orderItem = await this.itemRepo
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
-      .where('po.customer_po = :customerPo', { customerPo })
+      .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select('COALESCE(SUM(poi.planned_qty), 0)', 'quantityOrder')
       .getRawOne();
 
     const quantityOrder = Number(orderItem?.quantityOrder || 0);
 
-    // 3. Hitung total produksi berdasarkan po_number (internal)
     const productionTotal = await this.cuttingEntryRepo
       .createQueryBuilder('pce')
-      .where('pce.poNumber = :poNumber', { poNumber }) // ✅ Gunakan poNumber internal
+      .where('pce.poNumber = :poNumber', { poNumber })
       .andWhere('pce.sku = :sku', { sku })
       .andWhere('pce.sCode = :sCode', { sCode })
       .select('COALESCE(SUM(pce.quantityProduksi), 0)', 'total')
@@ -245,7 +246,7 @@ export class MasterDataService {
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
-      .where('po.customer_po = :customerPo', { customerPo })
+      .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select('COALESCE(SUM(poi.planned_qty), 0)', 'quantityOrder')
       .getRawOne();
@@ -263,8 +264,6 @@ export class MasterDataService {
           .getRawOne();
         totalProduced = Number(bondingTotal?.total || 0);
         break;
-
-      // Tambahkan department lain di sini jika diperlukan
 
       default:
         throw new BadRequestException(

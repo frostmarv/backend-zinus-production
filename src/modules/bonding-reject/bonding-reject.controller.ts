@@ -31,6 +31,10 @@ import { NotificationService } from '../notification/notification.service';
 import { DepartmentType } from '../replacement/entities/replacement-progress.entity';
 import { GoogleSheetsService } from '../../services/google-sheets.service';
 import { GoogleDriveService } from '../../services/google-drive.service';
+import { SkipAuth } from '../../common/decorators/skip-auth.decorator';
+// Import enum Department dan Role
+import { Department } from '../../common/enums/department.enum';
+import { Role } from '../../common/enums/role.enum';
 
 @Controller('bonding/reject')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -40,11 +44,12 @@ export class BondingRejectController {
   constructor(
     private readonly bondingRejectService: BondingRejectService,
     private readonly replacementService: ReplacementService,
-    private readonly notificationService: NotificationService,
+    private readonly notificationService: NotificationService, // Pastikan sudah di-inject
     private readonly googleSheetsService: GoogleSheetsService,
     private readonly googleDriveService: GoogleDriveService,
   ) {}
 
+  @SkipAuth()
   @Post('form-input')
   @HttpCode(HttpStatus.CREATED)
   async createReject(@Body() createDto: CreateBondingRejectDto) {
@@ -84,6 +89,19 @@ export class BondingRejectController {
       bondingReject.ng_quantity,
     );
 
+    // 🔁 GANTI pemanggilan ini: gunakan enum
+    await this.notificationService.sendWhatsAppToUsersInDepartment(
+      Department.CUTTING, // Gunakan enum Department
+      [Role.KASHIFT, Role.KANIT, Role.ADMIN_PRODUKSI], // Gunakan enum Role
+      `🚨 *NOTIFIKASI PRODUKSI*\n` +
+        `*Departemen:* Bonding → Cutting\n` +
+        `*Jenis:* Request NG & Replacement\n` +
+        `*Batch:* ${bondingReject.batch_number}\n` +
+        `*Qty NG:* ${bondingReject.ng_quantity} pcs\n` +
+        `*ID:* ${bondingReject.id}\n` +
+        `*Aksi:* Mohon segera proses replacement.`,
+    );
+
     this.logToGoogleSheets(bondingReject).catch((error) =>
       this.logger.error('Failed to log to Google Sheets:', error.message),
     );
@@ -93,6 +111,7 @@ export class BondingRejectController {
       message:
         'Bonding reject record created and replacement request initiated',
       data: {
+        // ✅ Gunakan sintaks objek yang benar
         // ✅ "data:" ditambahkan
         id: bondingReject.id,
         batch_number: bondingReject.batch_number,
@@ -102,6 +121,7 @@ export class BondingRejectController {
     };
   }
 
+  @SkipAuth()
   @Post(':id/upload-images')
   @UseInterceptors(FilesInterceptor('images', 10))
   async uploadImages(
@@ -144,6 +164,7 @@ export class BondingRejectController {
         success: true,
         message: `${files.length} images uploaded successfully to Google Drive`,
         data: {
+          // ✅ Gunakan sintaks objek yang benar
           // ✅ "data:" ditambahkan
           bondingRejectId: id,
           batchNumber: bondingReject.batch_number,
@@ -156,6 +177,7 @@ export class BondingRejectController {
         success: false,
         message: `Failed to upload to Google Drive: ${error.message}`,
         data: {
+          // ✅ Gunakan sintaks objek yang benar
           // ✅ "data:" ditambahkan
           bondingRejectId: id,
           batchNumber: bondingReject.batch_number,
@@ -227,6 +249,7 @@ export class BondingRejectController {
     return {
       success: true,
       data: {
+        // ✅ Gunakan sintaks objek yang benar
         id: data.id,
         batch_number: data.batch_number,
         ...data,
@@ -241,6 +264,7 @@ export class BondingRejectController {
     return {
       success: true,
       data: {
+        // ✅ Gunakan sintaks objek yang benar
         // ✅ "data:" ditambahkan
         id: data.id,
         batch_number: data.batch_number,
@@ -259,6 +283,7 @@ export class BondingRejectController {
       success: true,
       message: 'Record updated successfully',
       data: {
+        // ✅ Gunakan sintaks objek yang benar
         // ✅ "data:" ditambahkan
         id: data.id,
         batch_number: data.batch_number,
@@ -277,6 +302,7 @@ export class BondingRejectController {
       success: true,
       message: 'Status updated successfully',
       data: {
+        // ✅ Gunakan sintaks objek yang benar
         // ✅ "data:" ditambahkan
         id: data.id,
         batch_number: data.batch_number,

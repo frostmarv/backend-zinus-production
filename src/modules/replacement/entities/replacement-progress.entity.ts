@@ -19,7 +19,6 @@ export enum ReplacementStatus {
 export enum DepartmentType {
   BONDING = 'BONDING',
   CUTTING = 'CUTTING',
-  ASSEMBLY = 'ASSEMBLY',
 }
 
 @Entity('replacement_progress')

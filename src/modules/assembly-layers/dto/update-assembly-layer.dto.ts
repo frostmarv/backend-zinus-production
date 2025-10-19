@@ -1,9 +1,10 @@
+// src/modules/assembly-layers/dto/update-assembly-layer.dto.ts
 import { IsString, IsInt, IsOptional, MaxLength } from 'class-validator';
 
 export class UpdateAssemblyLayerDto {
   @IsOptional()
-  @IsInt()
-  product_id?: number;
+  @IsString()
+  product_sku?: string; // 👈 Ganti dari product_id
 
   @IsOptional()
   @IsString()

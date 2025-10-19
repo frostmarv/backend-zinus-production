@@ -1,9 +1,16 @@
-import { IsNotEmpty, IsString, IsInt, IsOptional, MaxLength } from 'class-validator';
+// src/modules/assembly-layers/dto/create-assembly-layer.dto.ts
+import {
+  IsNotEmpty,
+  IsString,
+  IsInt,
+  IsOptional,
+  MaxLength,
+} from 'class-validator';
 
 export class CreateAssemblyLayerDto {
   @IsNotEmpty()
-  @IsInt()
-  product_id: number;
+  @IsString()
+  product_sku: string; // 👈 Ganti dari product_id
 
   @IsNotEmpty()
   @IsString()

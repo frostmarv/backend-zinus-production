@@ -1,10 +1,16 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+// src/modules/assembly-layers/assembly-layers.service.ts
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { AssemblyLayer } from '../../entities/assembly-layer.entity';
 import { Product } from '../../entities/product.entity';
 import { CreateAssemblyLayerDto } from './dto/create-assembly-layer.dto';
 import { UpdateAssemblyLayerDto } from './dto/update-assembly-layer.dto';
+import { UploadAssemblyLayersDto } from './dto/upload-assembly-layer.dto'; // 🔴 Perbaikan: path file
 
 @Injectable()
 export class AssemblyLayersService {
@@ -62,32 +68,35 @@ export class AssemblyLayersService {
 
   async create(dto: CreateAssemblyLayerDto) {
     const product = await this.productRepo.findOne({
-      where: { product_id: dto.product_id },
+      where: { sku: dto.product_sku },
     });
 
     if (!product) {
-      throw new BadRequestException(`Product with ID ${dto.product_id} not found`);
+      throw new BadRequestException(
+        `Product dengan SKU ${dto.product_sku} tidak ditemukan`,
+      );
     }
 
     const existing = await this.assemblyLayerRepo.findOne({
       where: {
-        product: { product_id: dto.product_id },
+        product: { productId: product.productId },
         secondItemNumber: dto.second_item_number,
       },
     });
 
     if (existing) {
       throw new BadRequestException(
-        `Assembly layer with second_item_number '${dto.second_item_number}' already exists for this product`,
+        `Assembly layer dengan second_item_number '${dto.second_item_number}' sudah ada untuk produk ini`,
       );
     }
 
     const layer = this.assemblyLayerRepo.create({
-      product: product,
+      product,
       secondItemNumber: dto.second_item_number,
       description: dto.description,
       descriptionLine2: dto.description_line_2 || null,
       layerIndex: dto.layer_index || null,
+      categoryLayers: dto.category_layers || null,
     });
 
     const saved = await this.assemblyLayerRepo.save(layer);
@@ -104,30 +113,34 @@ export class AssemblyLayersService {
       throw new NotFoundException(`Assembly layer with ID ${id} not found`);
     }
 
-    let targetProductId = layer.product.product_id;
+    let targetProductId = layer.product.productId;
     let targetSecondItemNumber = layer.secondItemNumber;
 
-    if (dto.product_id !== undefined) {
+    if (dto.product_sku !== undefined) {
       const product = await this.productRepo.findOne({
-        where: { product_id: dto.product_id },
+        where: { sku: dto.product_sku },
       });
 
       if (!product) {
-        throw new BadRequestException(`Product with ID ${dto.product_id} not found`);
+        throw new BadRequestException(
+          `Product dengan SKU ${dto.product_sku} tidak ditemukan`,
+        );
       }
 
       layer.product = product;
-      targetProductId = dto.product_id;
+      targetProductId = product.productId;
     }
 
     if (dto.second_item_number !== undefined) {
       targetSecondItemNumber = dto.second_item_number;
     }
 
-    if (dto.product_id !== undefined || dto.second_item_number !== undefined) {
+    if (dto.product_sku !== undefined || dto.second_item_number !== undefined) {
       const existing = await this.assemblyLayerRepo
         .createQueryBuilder('al')
-        .where('al.productProductId = :productId', { productId: targetProductId })
+        .where('al.productProductId = :productId', {
+          productId: targetProductId,
+        })
         .andWhere('al.second_item_number = :secondItemNumber', {
           secondItemNumber: targetSecondItemNumber,
         })
@@ -136,7 +149,7 @@ export class AssemblyLayersService {
 
       if (existing) {
         throw new BadRequestException(
-          `Assembly layer with second_item_number '${targetSecondItemNumber}' already exists for this product`,
+          `Assembly layer dengan second_item_number '${targetSecondItemNumber}' sudah ada untuk produk ini`,
         );
       }
     }
@@ -157,6 +170,10 @@ export class AssemblyLayersService {
       layer.layerIndex = dto.layer_index;
     }
 
+    if (dto.category_layers !== undefined) {
+      layer.categoryLayers = dto.category_layers;
+    }
+
     await this.assemblyLayerRepo.save(layer);
     return this.findOne(id);
   }
@@ -170,5 +187,31 @@ export class AssemblyLayersService {
 
     await this.assemblyLayerRepo.remove(layer);
     return { message: `Assembly layer with ID ${id} has been deleted` };
+  }
+
+  async upload(dto: UploadAssemblyLayersDto) {
+    const results = [];
+    const errors = [];
+
+    for (const [index, layerDto] of dto.layers.entries()) {
+      try {
+        const layer = await this.create(layerDto);
+        results.push(layer);
+      } catch (error) {
+        errors.push({
+          index: index + 1,
+          sku: layerDto.product_sku,
+          second_item_number: layerDto.second_item_number,
+          error: error.message || 'Gagal menyimpan layer',
+        });
+      }
+    }
+
+    return {
+      success: results.length,
+      failed: errors.length,
+      results,
+      errors,
+    };
   }
 }

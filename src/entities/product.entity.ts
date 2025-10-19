@@ -1,49 +1,32 @@
-//src/entities/product.entity.ts
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-} from 'typeorm';
+// src/entities/product.entity.ts
+import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('products')
 export class Product {
-  @PrimaryGeneratedColumn()
-  product_id: number;
+  @PrimaryGeneratedColumn('increment', { name: 'product_id' })
+  productId: number;
 
-  @Column({ unique: true })
-  item_number: string;
+  @Column({ name: 'item_number' })
+  itemNumber: string;
 
   @Column({ unique: true })
   sku: string;
 
   @Column()
-  category: string;
+  category: string; // 'FOAM' | 'SPRING'
 
-  @Column({ nullable: true })
-  spec_length: number;
+  @Column({ name: 'spec_length', type: 'real' })
+  specLength: number;
 
-  @Column({ nullable: true })
-  spec_width: number;
+  @Column({ name: 'spec_width', type: 'real' })
+  specWidth: number;
 
-  @Column({ nullable: true })
-  spec_height: number;
+  @Column({ name: 'spec_height', type: 'real' })
+  specHeight: number;
 
-  @Column({ default: 'IN' })
-  spec_unit: string;
+  @Column({ name: 'spec_unit' })
+  specUnit: string;
 
-  @Column({ nullable: true })
-  density: number;
-
-  @Column({ nullable: true })
-  coil_gauge: number;
-
-  @Column()
-  item_description: string;
-
-  @Column({ default: true })
-  is_active: boolean;
-
-  @CreateDateColumn()
-  created_at: Date;
+  @Column({ name: 'item_description' })
+  itemDescription: string;
 }

@@ -2,6 +2,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { ScheduleModule } from '@nestjs/schedule';
 import databaseConfig from './config/database.config';
 import { validate } from './config/env.validation';
 
@@ -24,13 +25,16 @@ import { ProductionOrderItemModule } from './modules/production-order-item/produ
 import { ProductionPlanningModule } from './modules/production-planning/production-planning.module';
 import { ReplacementModule } from './modules/replacement/replacement.module';
 import { WorkableBondingModule } from './modules/workable-bonding/workable-bonding.module';
+import { WorkableLiveModule } from './modules/workable-live/live.module';
 
 // 🔐 Authentication Module (cukup import module-nya saja)
 import { AuthModule } from './modules/auth/auth.module';
+import { UserModule } from './modules/auth/user/user.module';
 
 // External Services & Controllers
 import { DocumentController } from './routes/document.controller';
 import { GoogleDriveService } from './services/google-drive.service';
+import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 
 @Module({
   imports: [
@@ -72,6 +76,7 @@ import { GoogleDriveService } from './services/google-drive.service';
 
     // 🔐 Modul Autentikasi
     AuthModule,
+    UserModule,
 
     // Feature Modules (urut alfabetis)
     AssemblyLayersModule,
@@ -87,9 +92,12 @@ import { GoogleDriveService } from './services/google-drive.service';
     ProductionOrderItemModule,
     ProductionPlanningModule,
     ReplacementModule,
+    ScheduleModule.forRoot(),
     WorkableBondingModule,
+    WhatsappModule,
+    WorkableLiveModule,
   ],
   controllers: [AppController, DocumentController],
-  providers: [AppService, GoogleDriveService], // ✅ TANPA AuthService di sini
+  providers: [AppService, GoogleDriveService],
 })
 export class AppModule {}

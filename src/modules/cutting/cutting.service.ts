@@ -5,7 +5,8 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In } from 'typeorm';
+import { Repository } from 'typeorm';
+import { Cron } from '@nestjs/schedule'; // 👈 Tambahkan ini
 import { CuttingRecord } from './cutting.entity';
 import { BalokEntity } from './balok.entity';
 import { ActualEntity } from './actual.entity';
@@ -41,8 +42,9 @@ export class CuttingService {
     private productionCuttingEntryRepo: Repository<ProductionCuttingEntry>,
   ) {}
 
+  // ===== CUTTING RECORD METHODS =====
+
   async create(dto: CreateCuttingDto) {
-    // ✅ Validasi input wajib
     if (!dto.productionDate)
       throw new BadRequestException('productionDate wajib diisi');
     if (!dto.shift) throw new BadRequestException('shift wajib diisi');
@@ -68,7 +70,6 @@ export class CuttingService {
     try {
       const savedRecord = await this.cuttingRepo.save(record);
 
-      // ✅ Simpan balok (sekarang array)
       if (dto.balok && dto.balok.length > 0) {
         for (const balokData of dto.balok) {
           const balokEntity = this.balokRepo.create({
@@ -86,7 +87,6 @@ export class CuttingService {
         }
       }
 
-      // ✅ Simpan semua actual
       if (dto.actual && Array.isArray(dto.actual) && dto.actual.length > 0) {
         const actualEntities = dto.actual.map((a) =>
           this.actualRepo.create({
@@ -140,7 +140,6 @@ export class CuttingService {
   async update(id: string, dto: UpdateCuttingDto) {
     const record = await this.findOne(id);
 
-    // ✅ Update header
     Object.assign(record, {
       productionDate: dto.productionDate ?? record.productionDate,
       shift: dto.shift ?? record.shift,
@@ -154,7 +153,6 @@ export class CuttingService {
 
     await this.cuttingRepo.save(record);
 
-    // ✅ Update balok
     if (dto.balok !== undefined) {
       await this.balokRepo.delete({ cuttingRecord: { id } });
       if (dto.balok) {
@@ -173,7 +171,6 @@ export class CuttingService {
       }
     }
 
-    // ✅ Update actual
     if (dto.actual !== undefined) {
       await this.actualRepo.delete({ cuttingRecord: { id } });
       if (Array.isArray(dto.actual) && dto.actual.length > 0) {
@@ -214,7 +211,6 @@ export class CuttingService {
   // ===== PRODUCTION CUTTING METHODS =====
 
   async createProductionCutting(dto: CreateProductionCuttingDto) {
-    // Validasi input wajib
     if (!dto.timestamp) throw new BadRequestException('timestamp wajib diisi');
     if (!dto.shift) throw new BadRequestException('shift wajib diisi');
     if (!dto.group) throw new BadRequestException('group wajib diisi');
@@ -236,8 +232,8 @@ export class CuttingService {
     try {
       const savedRecord = await this.productionCuttingRepo.save(record);
 
-      // Simpan semua entries (tanpa remainQuantity - akan dihitung saat GET)
       const entryEntities = dto.entries.map((entry) => {
+        const quantityProduksi = parseNumber(entry.quantityProduksi) || 0;
         return this.productionCuttingEntryRepo.create({
           customer: entry.customer,
           poNumber: entry.poNumber,
@@ -245,8 +241,13 @@ export class CuttingService {
           sCode: entry.sCode || null,
           description: entry.description || null,
           quantityOrder: parseNumber(entry.quantityOrder) || 0,
-          quantityProduksi: parseNumber(entry.quantityProduksi) || 0,
+          quantityProduksi: quantityProduksi,
           week: entry.week || null,
+          isHole: entry.isHole || false,
+          foamingDate: entry.foamingDate || null,
+          foamingDateCompleted: !!entry.foamingDate ? false : false, // false jika ada foamingDate
+          quantityHole: 0,
+          quantityHoleRemain: quantityProduksi,
           productionCuttingRecord: savedRecord,
         });
       });
@@ -266,7 +267,6 @@ export class CuttingService {
       order: { createdAt: 'DESC' },
     });
 
-    // Compute remainQuantity untuk setiap entry
     return await this.computeRemainQuantities(records);
   }
 
@@ -282,14 +282,11 @@ export class CuttingService {
       );
     }
 
-    // Compute remainQuantity untuk entries
     const [recordWithRemain] = await this.computeRemainQuantities([record]);
     return recordWithRemain;
   }
 
-  // Helper: Compute remain quantity berdasarkan total produksi di database
   private async computeRemainQuantities(records: ProductionCuttingRecord[]) {
-    // Kumpulkan semua unique keys (poNumber, sku, sCode)
     const keys = new Set<string>();
     records.forEach((record) => {
       record.entries?.forEach((entry) => {
@@ -299,7 +296,6 @@ export class CuttingService {
       });
     });
 
-    // Query total produksi untuk setiap key
     const totalProducedMap = new Map<string, number>();
 
     for (const key of keys) {
@@ -316,7 +312,6 @@ export class CuttingService {
       totalProducedMap.set(key, parseFloat(result?.total || 0));
     }
 
-    // Tambahkan remainQuantity ke setiap entry
     return records.map((record) => ({
       ...record,
       entries: record.entries?.map((entry) => {
@@ -330,6 +325,75 @@ export class CuttingService {
         };
       }),
     }));
+  }
+
+  async updateHoleQuantity(entryId: string, quantityHole: number) {
+    const entry = await this.productionCuttingEntryRepo.findOne({
+      where: { id: entryId },
+    });
+
+    if (!entry) {
+      throw new NotFoundException(
+        `Entry dengan ID "${entryId}" tidak ditemukan`,
+      );
+    }
+
+    const newQuantityHole = entry.quantityHole + quantityHole;
+    if (newQuantityHole > entry.quantityProduksi) {
+      throw new BadRequestException('Quantity hole exceeds quantity produksi');
+    }
+
+    entry.quantityHole = newQuantityHole;
+    entry.quantityHoleRemain = entry.quantityProduksi - entry.quantityHole;
+
+    return await this.productionCuttingEntryRepo.save(entry);
+  }
+
+  async markFoamingDateCompleted(entryId: string) {
+    const entry = await this.productionCuttingEntryRepo.findOne({
+      where: { id: entryId },
+    });
+
+    if (!entry) {
+      throw new NotFoundException(
+        `Entry dengan ID "${entryId}" tidak ditemukan`,
+      );
+    }
+
+    if (!entry.foamingDate) {
+      throw new BadRequestException('Entry tidak memiliki foaming date');
+    }
+
+    entry.foamingDateCompleted = true;
+    return await this.productionCuttingEntryRepo.save(entry);
+  }
+
+  // 🔁 CRON JOB: Otomatis tandai foamingDateCompleted = true setiap 10 menit
+  @Cron('*/10 * * * *')
+  async autoCompleteFoamingDates() {
+    const now = new Date();
+    console.log(
+      `[Cron] Memeriksa foaming date yang sudah lewat... (${now.toISOString()})`,
+    );
+
+    try {
+      const result = await this.productionCuttingEntryRepo
+        .createQueryBuilder()
+        .update(ProductionCuttingEntry)
+        .set({ foamingDateCompleted: true })
+        .where('foamingDate IS NOT NULL')
+        .andWhere('foamingDate <= :now', { now })
+        .andWhere('foamingDateCompleted = false')
+        .execute();
+
+      if (result.affected && result.affected > 0) {
+        console.log(
+          `✅ ${result.affected} entry foaming date otomatis ditandai selesai.`,
+        );
+      }
+    } catch (error) {
+      console.error('❌ Gagal menjalankan auto-complete foaming date:', error);
+    }
   }
 
   async removeProductionCutting(id: string) {

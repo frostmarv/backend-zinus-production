@@ -15,7 +15,10 @@ import {
 import { NotificationService } from './notification.service';
 import { CreateNotificationDto } from './dto/create-notification.dto';
 import { UpdateNotificationDto } from './dto/update-notification.dto';
-import { NotificationRecipientRole, NotificationType } from './entities/notification.entity';
+import {
+  NotificationRecipientDepartment,
+  NotificationType,
+} from './entities/notification.entity';
 
 @Controller('notification')
 @UsePipes(new ValidationPipe({ transform: true, whitelist: true }))
@@ -36,7 +39,8 @@ export class NotificationController {
 
   @Get()
   async findAll(
-    @Query('recipientRole') recipientRole?: NotificationRecipientRole,
+    @Query('recipientDepartment')
+    recipientDepartment?: NotificationRecipientDepartment,
     @Query('readStatus') readStatus?: string,
     @Query('type') type?: NotificationType,
     @Query('relatedEntityType') relatedEntityType?: string,
@@ -44,7 +48,7 @@ export class NotificationController {
   ) {
     const filters: any = {};
 
-    if (recipientRole) filters.recipientRole = recipientRole;
+    if (recipientDepartment) filters.recipientDepartment = recipientDepartment;
     if (readStatus !== undefined) filters.readStatus = readStatus === 'true';
     if (type) filters.type = type;
     if (relatedEntityType) filters.relatedEntityType = relatedEntityType;
@@ -60,8 +64,12 @@ export class NotificationController {
   }
 
   @Get('unread-count')
-  async getUnreadCount(@Query('recipientRole') recipientRole?: NotificationRecipientRole) {
-    const count = await this.notificationService.getUnreadCount(recipientRole);
+  async getUnreadCount(
+    @Query('recipientDepartment')
+    recipientDepartment?: NotificationRecipientDepartment,
+  ) {
+    const count =
+      await this.notificationService.getUnreadCount(recipientDepartment);
 
     return {
       success: true,
@@ -118,8 +126,11 @@ export class NotificationController {
 
   @Put('read/all')
   @HttpCode(HttpStatus.OK)
-  async markAllAsRead(@Query('recipientRole') recipientRole?: NotificationRecipientRole) {
-    await this.notificationService.markAllAsRead(recipientRole);
+  async markAllAsRead(
+    @Query('recipientDepartment')
+    recipientDepartment?: NotificationRecipientDepartment,
+  ) {
+    await this.notificationService.markAllAsRead(recipientDepartment);
 
     return {
       success: true,

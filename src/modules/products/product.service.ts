@@ -1,5 +1,9 @@
 // src/modules/products/product.service.ts
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Product } from '../../entities/product.entity';
@@ -17,10 +21,36 @@ export class ProductService {
 
   async findOne(id: number): Promise<Product> {
     const product = await this.productRepo.findOne({
-      where: { product_id: id },
+      where: { productId: id }, // 👈 property name
     });
     if (!product)
       throw new NotFoundException(`Product dengan ID "${id}" tidak ditemukan`);
     return product;
+  }
+
+  // 🔹 BARU: Cari berdasarkan SKU
+  async findBySku(sku: string): Promise<Product | null> {
+    return this.productRepo.findOne({ where: { sku } });
+  }
+
+  // 🔹 BARU: Buat product baru
+  async create(createDto: {
+    itemNumber: string;
+    sku: string;
+    category: string;
+    specLength: number;
+    specWidth: number;
+    specHeight: number;
+    specUnit: string;
+    itemDescription: string;
+  }): Promise<Product> {
+    const existing = await this.findBySku(createDto.sku);
+    if (existing) {
+      throw new BadRequestException(
+        `Product dengan SKU "${createDto.sku}" sudah ada`,
+      );
+    }
+    const product = this.productRepo.create(createDto);
+    return this.productRepo.save(product);
   }
 }

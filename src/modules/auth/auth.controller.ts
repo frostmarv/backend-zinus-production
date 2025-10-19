@@ -5,10 +5,12 @@ import {
   UsePipes,
   ValidationPipe,
   HttpStatus,
+  Headers,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { LoginDto } from './dto/login.dto';
-import { SkipAuth } from '../../../common/decorators/skip-auth.decorator';
+import { SkipAuth } from '../../common/decorators/skip-auth.decorator';
 
 @Controller('auth')
 export class AuthController {
@@ -29,5 +31,20 @@ export class AuthController {
       };
     }
     return this.authService.login(user);
+  }
+
+  @SkipAuth() // Endpoint ini tidak perlu auth
+  @Post('refresh')
+  async refresh(@Headers('authorization') authHeader: string) {
+    const token = authHeader?.replace('Bearer ', '');
+    if (!token) {
+      throw new UnauthorizedException('Refresh token tidak ditemukan');
+    }
+
+    try {
+      return await this.authService.refreshToken(token);
+    } catch (e) {
+      throw new UnauthorizedException('Refresh token tidak valid');
+    }
   }
 }

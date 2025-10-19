@@ -1,3 +1,4 @@
+// src/common/enums/role.enum.ts
 export enum Role {
   PEMILIK = 'Pemilik',
   MANAGER = 'Manager',
@@ -5,6 +6,7 @@ export enum Role {
   KASHIFT = 'Kashift',
   KANIT = 'Kanit',
   ADMIN = 'Admin',
-  ADMIN_LAPANGAN = 'Admin Lapangan',
+  ADMIN_JDE = 'Admin JDE',
+  ADMIN_PRODUKSI = 'Admin Produksi',
   ADMIN_MATERIAL = 'Admin Material',
 }

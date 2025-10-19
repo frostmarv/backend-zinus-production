@@ -6,12 +6,10 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-export enum NotificationRecipientRole {
-  ADMIN = 'ADMIN',
-  LEADER = 'LEADER',
-  OPERATOR = 'OPERATOR',
-  SUPERVISOR = 'SUPERVISOR',
-  ALL = 'ALL',
+// Enum hanya untuk Cutting & Bonding
+export enum NotificationRecipientDepartment {
+  CUTTING = 'Cutting',
+  BONDING = 'Bonding',
 }
 
 export enum NotificationType {
@@ -33,14 +31,14 @@ export class Notification {
   message: string;
 
   @Column({
-    name: 'recipient_roles',
-    type: 'simple-array',
+    name: 'recipient_departments',
+    type: 'simple-array', // Simpan sebagai string: "Cutting,Bonding"
   })
-  recipientRoles: NotificationRecipientRole[];
+  recipientDepartments: NotificationRecipientDepartment[]; // Hanya Cutting & Bonding
 
-  // ✅ Ganti 'enum' → 'varchar'
   @Column({
     type: 'varchar',
+    length: 20,
     default: NotificationType.INFO,
   })
   type: NotificationType;
@@ -57,7 +55,6 @@ export class Notification {
   @Column({ name: 'related_entity_id', nullable: true })
   relatedEntityId: string;
 
-  // ✅ Ganti 'timestamp' → 'datetime'
   @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 

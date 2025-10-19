@@ -11,6 +11,7 @@ import {
   ValidationPipe,
   HttpCode,
   HttpStatus,
+  Patch,
 } from '@nestjs/common';
 import { CuttingService } from './cutting.service';
 import { CreateCuttingDto } from './dto/create-cutting.dto';
@@ -26,6 +27,7 @@ import {
 
 // 🔽 Import Google Sheets Service
 import { GoogleSheetsService } from '../../services/google-sheets.service';
+import { SkipAuth } from '../../common/decorators/skip-auth.decorator';
 
 @ApiTags('Cutting Records')
 @Controller('cutting')
@@ -203,6 +205,7 @@ export class CuttingController {
   /**
    * Get all production cutting records
    */
+  @SkipAuth()
   @Get('production')
   @ApiOperation({ summary: 'Ambil semua data production cutting records' })
   @ApiResponse({
@@ -232,6 +235,50 @@ export class CuttingController {
   })
   async findOneProductionCutting(@Param('id') id: string) {
     return await this.cuttingService.findOneProductionCutting(id);
+  }
+
+  /**
+   * Update quantity hole secara partial
+   */
+  @Patch('production/entry/:id/hole')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Update quantity hole secara partial' })
+  @ApiParam({ name: 'id', type: String, description: 'UUID dari entry' })
+  @ApiBody({ schema: { example: { quantityHole: 50 } } })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Berhasil diupdate.' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Input tidak valid atau quantity melebihi produksi.',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Entry tidak ditemukan.',
+  })
+  async updateHoleQuantity(
+    @Param('id') entryId: string,
+    @Body('quantityHole') quantityHole: number,
+  ) {
+    return await this.cuttingService.updateHoleQuantity(entryId, quantityHole);
+  }
+
+  /**
+   * Tandai foaming date sebagai selesai (manual approved)
+   */
+  @Patch('production/entry/:id/foaming-completed')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Tandai foaming date sebagai selesai (manual)' })
+  @ApiParam({ name: 'id', type: String, description: 'UUID dari entry' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Berhasil diupdate.' })
+  @ApiResponse({
+    status: HttpStatus.BAD_REQUEST,
+    description: 'Entry tidak memiliki foaming date.',
+  })
+  @ApiResponse({
+    status: HttpStatus.NOT_FOUND,
+    description: 'Entry tidak ditemukan.',
+  })
+  async markFoamingDateCompleted(@Param('id') entryId: string) {
+    return await this.cuttingService.markFoamingDateCompleted(entryId);
   }
 
   /**

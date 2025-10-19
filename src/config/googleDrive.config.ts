@@ -1,12 +1,17 @@
+// src/config/googleDrive.config.ts
 import { google } from 'googleapis';
 import * as path from 'path';
-import * as fs from 'fs';
 
-// ✅ Gunakan service-account.json yang sama dengan Google Sheets
-const CREDENTIALS_PATH = path.join(__dirname, 'service-account.json');
+// ✅ Perbaiki path agar relatif ke root project
+const CREDENTIALS_PATH = path.join(
+  process.cwd(),
+  'config',
+  'service-account.json',
+);
+
 const SCOPES = [
-  'https://www.googleapis.com/auth/drive.file',
-  'https://www.googleapis.com/auth/spreadsheets',
+  'https://www.googleapis.com/auth/drive', // ✅ Akses penuh ke Drive
+  'https://www.googleapis.com/auth/spreadsheets', // ✅ Akses ke Sheets
 ];
 
 export async function getDriveService() {
@@ -19,7 +24,6 @@ export async function getDriveService() {
   return drive;
 }
 
-// ✅ Tambahkan fungsi untuk Sheets (opsional, bisa pakai GoogleSheetsService)
 export async function getSheetsService() {
   const auth = new google.auth.GoogleAuth({
     keyFile: CREDENTIALS_PATH,

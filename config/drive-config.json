@@ -1,0 +1,10 @@
+{
+  "ROOT_FOLDER_NAME": "ZinusDreamIndonesia",
+  "SHARED_DRIVE_ID": "0ACI0_4dyx9qvUk9PVA",
+  "DEPARTMENTS": {
+    "bonding": { "code": "BND", "folderName": "Bonding" },
+    "cutting": { "code": "CTG", "folderName": "Cutting" }
+  },
+  "SERVICE_ACCOUNT_PATH": "config/service-account.json",
+  "DEFAULT_PUBLIC_PERMISSION": true
+}

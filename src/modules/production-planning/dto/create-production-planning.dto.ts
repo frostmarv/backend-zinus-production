@@ -1,67 +1,27 @@
+// src/modules/production-planning/dto/create-production-planning.dto.ts
 import { IsString, IsNotEmpty, IsNumber, IsOptional } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateProductionPlanningDto {
-  @IsString()
-  @IsNotEmpty()
-  shipToName: string;
+  @IsString() @IsNotEmpty() shipToName: string;
+  @IsString() @IsNotEmpty() customerPO: string;
+  @IsString() @IsNotEmpty() poNumber: string;
 
-  @IsString()
-  @IsNotEmpty()
-  customerPO: string;
+  // --- Product fields (akan disimpan ke tabel products) ---
+  @IsString() @IsNotEmpty() itemNumber: string;
+  @IsString() @IsNotEmpty() sku: string;
+  @IsString() @IsNotEmpty() category: string; // 'FOAM' atau 'SPRING'
+  @IsNumber() @Type(() => Number) specLength: number;
+  @IsNumber() @Type(() => Number) specWidth: number;
+  @IsNumber() @Type(() => Number) specHeight: number;
+  @IsString() @IsNotEmpty() specUnit: string; // 'IN'
+  @IsString() @IsNotEmpty() itemDescription: string;
 
-  @IsString()
-  @IsNotEmpty()
-  poNumber: string;
-
-  @IsString()
-  @IsNotEmpty()
-  itemNumber: string;
-
-  @IsString()
-  @IsNotEmpty()
-  sku: string;
-
-  @IsString()
-  @IsOptional()
-  spec?: string;
-
-  @IsString()
-  @IsOptional()
-  itemDescription?: string;
-
-  @IsString()
-  @IsOptional()
-  iD?: string;
-
-  @IsString()
-  @IsOptional()
-  lD?: string;
-
-  @IsString()
-  @IsOptional()
-  sD?: string;
-
-  @IsNumber()
-  @IsNotEmpty()
-  @Type(() => Number)
-  orderQty: number;
-
-  @IsNumber()
-  @IsOptional()
-  @Type(() => Number)
-  sample?: number;
-
-  @IsNumber()
-  @IsNotEmpty()
-  @Type(() => Number)
-  totalQty: number;
-
-  @IsString()
-  @IsNotEmpty()
-  week: string;
-
-  @IsString()
-  @IsNotEmpty()
-  category: string;
+  // --- Order item fields ---
+  @IsString() @IsOptional() iD?: string;
+  @IsString() @IsOptional() lD?: string;
+  @IsString() @IsOptional() sD?: string;
+  @IsNumber() @Type(() => Number) orderQty: number;
+  @IsNumber() @Type(() => Number) @IsOptional() sample?: number;
+  @IsString() @IsNotEmpty() week: string; // akan di-parseInt
 }

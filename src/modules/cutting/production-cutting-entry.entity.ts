@@ -37,6 +37,23 @@ export class ProductionCuttingEntry {
   @Column({ nullable: true })
   week: string;
 
+  // ✅ Tambahkan kolom isHole dan foamingDate
+  @Column({ name: 'is_hole', type: 'boolean', default: false })
+  isHole: boolean;
+
+  @Column({ name: 'foaming_date', nullable: true })
+  foamingDate?: string; // ISO string format
+
+  // ✅ Tambahkan kolom baru untuk logika tambahan
+  @Column({ name: 'foaming_date_completed', type: 'boolean', default: false })
+  foamingDateCompleted: boolean;
+
+  @Column({ name: 'quantity_hole', type: 'int', default: 0 })
+  quantityHole: number;
+
+  @Column({ name: 'quantity_hole_remain', type: 'int', default: 0 })
+  quantityHoleRemain: number;
+
   @ManyToOne(() => ProductionCuttingRecord, (record) => record.entries, {
     onDelete: 'CASCADE',
   })

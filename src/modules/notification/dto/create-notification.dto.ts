@@ -1,5 +1,14 @@
-import { IsArray, IsEnum, IsNotEmpty, IsOptional, IsString, IsUUID } from 'class-validator';
-import { NotificationRecipientRole, NotificationType } from '../entities/notification.entity';
+import {
+  IsArray,
+  IsEnum,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+} from 'class-validator';
+import {
+  NotificationRecipientDepartment,
+  NotificationType,
+} from '../entities/notification.entity';
 
 export class CreateNotificationDto {
   @IsString()
@@ -11,8 +20,8 @@ export class CreateNotificationDto {
   message: string;
 
   @IsArray()
-  @IsEnum(NotificationRecipientRole, { each: true })
-  recipientRoles: NotificationRecipientRole[];
+  @IsEnum(NotificationRecipientDepartment, { each: true })
+  recipientDepartments: NotificationRecipientDepartment[]; // Ganti dari recipientRoles
 
   @IsEnum(NotificationType)
   @IsOptional()
@@ -26,7 +35,7 @@ export class CreateNotificationDto {
   @IsOptional()
   relatedEntityType?: string;
 
-  @IsUUID()
+  @IsString()
   @IsOptional()
   relatedEntityId?: string;
 }
