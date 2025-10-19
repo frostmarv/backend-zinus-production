@@ -13,7 +13,7 @@
     "postbuild": "mkdir -p dist/config && cp src/config/*.json dist/config/",
     "prestart": "npm run build",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
-    "start": "node --max-old-space-size=2048 dist/main.js",
+    "start": "node --max-old-space-size=1023 dist/main.js",
     "start:dev": "node --max-old-space-size=2048 ./node_modules/@nestjs/cli/bin/nest.js start --watch",
     "start:debug": "node --max-old-space-size=2048 --inspect-brk ./node_modules/@nestjs/cli/bin/nest.js start --debug --watch",
     "start:prod": "node dist/main.js",
