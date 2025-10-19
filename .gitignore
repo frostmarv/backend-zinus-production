@@ -75,4 +75,5 @@ server.log
 test-*.json
 
 # Local state
-.local/
+.local/src/config/google-services.json
+src/config/service-account.json

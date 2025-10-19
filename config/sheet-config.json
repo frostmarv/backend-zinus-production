@@ -1,0 +1,37 @@
+{
+  "SPREADSHEET_MASTER": "abcd1234efgh5678ijkl90",
+  "departments": {
+    "cutting": {
+      "summary": {
+        "sheetName": "Summary",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      },
+      "balok": {
+        "sheetName": "Balok",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      }
+    },
+    "bonding": {
+      "ng_log": {
+        "sheetName": "NG Log",
+        "spreadsheetId": "1_4Qyf-aBCXfBvPL5YUm4g0AflHjEFmpXmIcmxb7WCgs"
+      },
+      "summary": {
+        "sheetName": "summary",
+        "spreadsheetId": "1_4Qyf-aBCXfBvPL5YUm4g0AflHjEFmpXmIcmxb7WCgs"
+      }
+    },
+    "replacement": {
+      "log": {
+        "sheetName": "Replacement Log",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      }
+    },
+    "cutting_replacement": {
+      "log": {
+        "sheetName": "Cutting Process Log",
+        "spreadsheetId": "1XcfiI5CgS8PmuprcM4u6zV-_PRsN09W9X_-v0nuZKC0"
+      }
+    }
+  }
+}
