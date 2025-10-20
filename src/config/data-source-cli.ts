@@ -22,14 +22,18 @@ config(); // Load .env
 
 const MigrationDataSource = new DataSource({
   type: 'postgres',
-  host: process.env.PGHOST || 'localhost',
-  port: parseInt(process.env.PGPORT || '5432', 10),
-  username: process.env.PGUSER || 'postgres',
-  password: process.env.PGPASSWORD || '',
-  database: process.env.PGDATABASE || 'postgres',
+  // Gunakan DATABASE_URL jika tersedia, jika tidak gunakan konfig manual
+  ...(process.env.DATABASE_URL
+    ? { url: process.env.DATABASE_URL }
+    : {
+        host: process.env.PGHOST || 'localhost',
+        port: parseInt(process.env.PGPORT || '5432', 10),
+        username: process.env.PGUSER || 'postgres',
+        password: process.env.PGPASSWORD || '',
+        database: process.env.PGDATABASE || 'postgres',
+      }),
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
   entities: [
-    // Semua entitas REGULER (bukan view)
     Customer,
     ProductionOrder,
     ProductionOrderItem,
@@ -46,8 +50,6 @@ const MigrationDataSource = new DataSource({
     ReplacementProgress,
     Notification,
     CuttingProcess,
-    // JANGAN MASUKKAN:
-    // ProductionPlanningView, // <-- Jangan include ini
   ],
   migrations: [__dirname + '/migrations/*.{js,ts}'],
   synchronize: false,
