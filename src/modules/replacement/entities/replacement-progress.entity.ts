@@ -52,7 +52,7 @@ export class ReplacementProgress {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
-  @Column({ name: 'bonding_reject_id', type: 'varchar', length: 100, nullable: true })
+  @Column({ name: 'bonding_reject_id', type: 'varchar', nullable: true })
   bondingRejectId: string;
 
   @ManyToOne(() => BondingReject, { nullable: true })
