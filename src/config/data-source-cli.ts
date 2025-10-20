@@ -1,6 +1,7 @@
 // src/config/data-source-cli.ts
 import { DataSource } from 'typeorm';
 import { config } from 'dotenv';
+import path from 'path';
 import { Customer } from '../entities/customer.entity';
 import { ProductionOrder } from '../entities/production-order.entity';
 import { ProductionOrderItem } from '../entities/production-order-item.entity';
@@ -20,9 +21,10 @@ import { CuttingProcess } from '../modules/cutting-replacement/entities/cutting-
 
 config(); // Load .env
 
+const isProduction = process.env.NODE_ENV === 'production';
+
 const MigrationDataSource = new DataSource({
   type: 'postgres',
-  // Gunakan DATABASE_URL jika tersedia, jika tidak gunakan konfig manual
   ...(process.env.DATABASE_URL
     ? { url: process.env.DATABASE_URL }
     : {
@@ -32,7 +34,7 @@ const MigrationDataSource = new DataSource({
         password: process.env.PGPASSWORD || '',
         database: process.env.PGDATABASE || 'postgres',
       }),
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
+  ssl: isProduction ? { rejectUnauthorized: false } : false,
   entities: [
     Customer,
     ProductionOrder,
@@ -51,8 +53,12 @@ const MigrationDataSource = new DataSource({
     Notification,
     CuttingProcess,
   ],
-  migrations: [__dirname + '/migrations/*.{js,ts}'],
+  migrations: [
+    path.join(__dirname, '../migrations/*.{ts,js}'), // pasti terbaca
+  ],
+  migrationsTableName: 'migrations', // nama tabel migrations
   synchronize: false,
+  logging: false,
 });
 
 export default MigrationDataSource;
