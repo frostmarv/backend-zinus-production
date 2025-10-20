@@ -230,18 +230,15 @@ export class WorkableBondingService {
         const layerHoleQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
         for (const e of allEntries) {
-          // Clamp layer index to 1–4
           const layerIdx = Math.min(Math.max(e.layer_index || 1, 1), 4);
-
           layerBondingQtys[layerIdx] += e.bonding_qty;
 
           if (e.foaming_date && !e.foaming_date_completed) {
-            continue; // skip foaming-in-progress
+            continue;
           }
 
           if (e.is_hole) {
             layerHoleQtys[layerIdx] += e.quantity_hole_remain;
-            // net_qty already reduced by NG in raw data; do not set layerNetQtys
           } else {
             layerNetQtys[layerIdx] = Math.max(layerNetQtys[layerIdx], e.net_qty);
           }
@@ -253,21 +250,18 @@ export class WorkableBondingService {
           const net = layerNetQtys[idx];
           const bonding = layerBondingQtys[idx];
           const holeRemain = layerHoleQtys[idx];
-
           const layerWorkable = holeRemain === 0 ? Math.max(net - bonding, 0) : 0;
           layers[layerNames[idx]] = layerWorkable;
           if (layerWorkable < minWorkable) minWorkable = layerWorkable;
         }
 
-        const totalHoleRemain = Object.values(layerHoleQtys).reduce((sum, v) => sum + v, 0);
         const totalBonding = allEntries.reduce((sum, e) => sum + e.bonding_qty, 0);
         const remainProduksi = active.quantityOrder - totalBonding;
-
+        const totalHoleRemain = Object.values(layerHoleQtys).reduce((sum, v) => sum + v, 0);
         const totalHoleProcessed = allEntries.reduce((sum, e) => {
           if (e.is_hole) return sum + (e.quantity_hole - e.quantity_hole_remain);
           return sum;
         }, 0);
-
         const totalFoaming = allEntries.reduce((sum, e) => {
           if (e.foaming_date && !e.foaming_date_completed) return sum + e.cutting_qty;
           return sum;
@@ -278,7 +272,6 @@ export class WorkableBondingService {
           remarks = 'Bonding completed';
         } else {
           const statuses = [];
-
           const activeFoamingEntries = allEntries.filter(
             (e) => e.foaming_date && !e.foaming_date_completed,
           );
@@ -288,24 +281,20 @@ export class WorkableBondingService {
               : 'TBD';
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
-
           if (totalHoleRemain > 0) {
             statuses.push(
               `Hole Processing: ${totalHoleProcessed}/${totalHoleProcessed + totalHoleRemain} done`,
             );
           }
-
           if (
             statuses.length === 0 &&
             allEntries.some((e) => e.cutting_qty > 0 && !e.foaming_date && !e.is_hole)
           ) {
             statuses.push('Cutting in progress');
           }
-
           if (statuses.length === 0) {
             statuses.push('Waiting for cutting');
           }
-
           remarks = statuses.join(', ');
         }
 
@@ -510,7 +499,7 @@ export class WorkableBondingService {
             WHERE br.status != 'CANCELLED' AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
             GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
           ) rp ON br.sku = rp.sku AND br.s_code = rp.s_code
-          GROUP BY br.sku, br.s_code
+          -- ✅ REMOVED: GROUP BY br.sku, br.s_code
         ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
         WHERE e.week IS NOT NULL
         GROUP BY e.sku, e.week, COALESCE(e.s_code, 'MAIN'), ng.net_ng_qty
