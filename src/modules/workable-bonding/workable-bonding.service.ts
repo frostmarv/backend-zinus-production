@@ -61,7 +61,6 @@ export class WorkableBondingService {
         item.net_qty = item.net_qty || 0;
         item.bonding_qty = item.bonding_qty || 0;
         item.foaming_date = item.foaming_date || null;
-        // Sudah boolean dari DB, tapi tetap aman
         item.foaming_date_completed = Boolean(item.foaming_date_completed);
         item.is_hole = Boolean(item.is_hole);
         item.quantity_hole = item.quantity_hole || 0;
@@ -503,12 +502,15 @@ export class WorkableBondingService {
         ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
         WHERE e.week IS NOT NULL
         GROUP BY e.sku, e.week, COALESCE(e.s_code, 'MAIN'), ng.net_ng_qty
-      ) ca ON p.sku = ca.sku AND poi.week_number = ca.week AND COALESCE(al.second_item_number, 'MAIN') = ca."sCode"
+      ) ca ON p.sku = ca.sku 
+           AND poi.week_number::TEXT = ca.week  -- ✅ CAST week_number ke TEXT
+           AND COALESCE(al.second_item_number, 'MAIN') = ca."sCode"
       LEFT JOIN (
         SELECT sku, week, SUM(quantity_produksi) AS "bonding_qty"
         FROM bonding_summary
         GROUP BY sku, week
-      ) bs ON p.sku = bs.sku AND poi.week_number = bs.week
+      ) bs ON p.sku = bs.sku 
+           AND poi.week_number::TEXT = bs.week  -- ✅ CAST week_number ke TEXT
       WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
       ORDER BY c.customer_name, p.sku, poi.week_number, "layer_index"
     `);
