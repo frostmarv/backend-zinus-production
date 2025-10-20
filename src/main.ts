@@ -7,26 +7,20 @@ if (!globalThis.crypto) {
 
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
-import { ValidationPipe } from '@nestjs/common'; // ← Hapus Reflector dari sini
+import { ValidationPipe } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ConfigHelper } from './config/config.helper';
 import { AllExceptionsFilter } from './filters/http-exception.filter';
-
-// Import guard (tanpa instantiate manual)
 import { JwtAuthGuard } from './modules/auth/guards/jwt-auth.guard';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   app.setGlobalPrefix('api');
 
-  // Get configuration service
   const configService = app.get(ConfigService);
   const configHelper = new ConfigHelper(configService);
-
-  // Print configuration summary
   configHelper.printConfigSummary();
 
-  // Validate production settings
   const warnings = configHelper.validateProductionConfig();
   if (warnings.length > 0) {
     console.log('⚠️  PRODUCTION WARNINGS:');
@@ -34,7 +28,7 @@ async function bootstrap() {
     console.log('');
   }
 
-  // ✅ Enable global validation
+  // ✅ Global validation
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,
@@ -43,59 +37,55 @@ async function bootstrap() {
     }),
   );
 
-  // ✅ Enable global exception filter
+  // ✅ Global exception filter
   app.useGlobalFilters(new AllExceptionsFilter());
 
-  // ✅ Terapkan JWT Guard secara global (CARA BENAR)
+  // ✅ Global JWT guard
   app.useGlobalGuards(app.get(JwtAuthGuard));
 
-  // ✅ Enable CORS (for Replit or custom origins)
-  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN || '';
+  // ✅ CORS dari .env
+  const nodeEnv = configService.get('NODE_ENV', 'development');
+  const rawAllowedOrigins = configService.get<string>('ALLOWED_ORIGINS', '');
+  const allowedOrigins = rawAllowedOrigins
+    .split(',')
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 
-  // Development origins
-  const developmentOrigins = [
-    'http://127.0.0.1:5000',
-    'http://localhost:5000',
-    'https://3000-firebase-zinus-production-app-1759506951245.cluster-w5vd22whf5gmav2vgkomwtc4go.cloudworkstations.dev',
-    'https://zinus-production-web.vercel.app',
-    `https://${replitDevDomain}`,
-  ];
+  // Opsional: tambahkan Replit dev domain jika ada
+  const replitDevDomain = process.env.REPLIT_DEV_DOMAIN;
+  if (replitDevDomain && nodeEnv === 'development') {
+    allowedOrigins.push(`https://${replitDevDomain}`);
+  }
 
-  // Get additional allowed origins from env (for production)
-  const additionalOrigins =
-    configService.get('ALLOWED_ORIGINS')?.split(',').filter(Boolean) || [];
-
-  // Combine all allowed origins
-  const allowedOrigins = [...developmentOrigins, ...additionalOrigins];
-
-  console.log('🔒 CORS Allowed Origins:', allowedOrigins);
+  // Log origins yang diizinkan
+  console.log('🔒 CORS Allowed Origins:', allowedOrigins.length > 0 ? allowedOrigins : ['(none — only requests without origin allowed)']);
 
   app.enableCors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps, curl, Postman)
-      if (!origin) return callback(null, true);
-
-      // Check if origin is in allowed list
-      if (allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        // For development, also allow any replit.dev domains
-        if (origin.includes('.replit.dev')) {
-          callback(null, true);
-        } else {
-          console.warn(`⚠️  CORS blocked origin: ${origin}`);
-          callback(new Error('Not allowed by CORS'));
-        }
+      // Izinkan permintaan tanpa origin (mobile app, curl, Postman, dll)
+      if (!origin) {
+        return callback(null, true);
       }
+
+      // Izinkan jika ada di daftar ALLOWED_ORIGINS
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      // Di development, izinkan juga semua subdomain .replit.dev
+      if (nodeEnv === 'development' && origin.endsWith('.replit.dev')) {
+        return callback(null, true);
+      }
+
+      console.warn(`⚠️  CORS blocked origin: ${origin}`);
+      return callback(new Error('Not allowed by CORS'));
     },
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
     credentials: true,
   });
 
-  // Port & environment
   const port = configService.get('PORT', 5000);
-  const nodeEnv = configService.get('NODE_ENV', 'development');
 
   await app.listen(port, '0.0.0.0');
 

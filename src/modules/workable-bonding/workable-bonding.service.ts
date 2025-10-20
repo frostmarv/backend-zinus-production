@@ -61,8 +61,8 @@ export class WorkableBondingService {
         item.net_qty = item.net_qty || 0;
         item.bonding_qty = item.bonding_qty || 0;
         item.foaming_date = item.foaming_date || null;
-        item.foaming_date_completed = item.foaming_date_completed || false;
-        item.is_hole = item.is_hole || false;
+        item.foaming_date_completed = Boolean(item.foaming_date_completed);
+        item.is_hole = Boolean(item.is_hole);
         item.quantity_hole = item.quantity_hole || 0;
         item.quantity_hole_remain = item.quantity_hole_remain || 0;
       }
@@ -86,10 +86,7 @@ export class WorkableBondingService {
       weeks.sort((a, b) => a.week - b.week);
 
       const active = weeks.find((w) => {
-        const totalBonding = w.entries.reduce(
-          (sum, e) => sum + e.bonding_qty,
-          0,
-        );
+        const totalBonding = w.entries.reduce((sum, e) => sum + e.bonding_qty, 0);
         const remain = w.quantityOrder - totalBonding;
         return remain > 0;
       });
@@ -108,10 +105,7 @@ export class WorkableBondingService {
           .filter((v) => typeof v === 'number' && !isNaN(v)) as number[];
         const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
 
-        const totalBonding = allEntries.reduce(
-          (sum, e) => sum + e.bonding_qty,
-          0,
-        );
+        const totalBonding = allEntries.reduce((sum, e) => sum + e.bonding_qty, 0);
         const remainProduksi = active.quantityOrder - totalBonding;
 
         const totalHoleRemain = allEntries.reduce((sum, e) => {
@@ -138,9 +132,7 @@ export class WorkableBondingService {
           );
           if (activeFoamingEntries.length > 0) {
             const foamingDateStr = activeFoamingEntries[0].foaming_date
-              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString(
-                  'id-ID',
-                )
+              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString('id-ID')
               : 'TBD';
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
@@ -157,9 +149,7 @@ export class WorkableBondingService {
 
           if (
             statuses.length === 0 &&
-            allEntries.some(
-              (e) => e.cutting_qty > 0 && !e.foaming_date && !e.is_hole,
-            )
+            allEntries.some((e) => e.cutting_qty > 0 && !e.foaming_date && !e.is_hole)
           ) {
             statuses.push('Cutting in progress');
           }
@@ -194,9 +184,8 @@ export class WorkableBondingService {
 
     return result.sort(
       (a, b) =>
-        a.shipToName.localeCompare(b.shipToName, undefined, {
-          sensitivity: 'base',
-        }) || a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
+        a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
+        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
     );
   }
 
@@ -215,14 +204,12 @@ export class WorkableBondingService {
       2: 'Layer 2',
       3: 'Layer 3',
       4: 'Layer 4',
-      5: 'Hole',
     };
     const emptyLayers = {
       'Layer 1': 0,
       'Layer 2': 0,
       'Layer 3': 0,
       'Layer 4': 0,
-      Hole: 0,
     };
 
     const result: any[] = [];
@@ -230,10 +217,7 @@ export class WorkableBondingService {
       weeks.sort((a, b) => a.week - b.week);
 
       const active = weeks.find((w) => {
-        const totalBonding = w.entries.reduce(
-          (sum, e) => sum + e.bonding_qty,
-          0,
-        );
+        const totalBonding = w.entries.reduce((sum, e) => sum + e.bonding_qty, 0);
         const remain = w.quantityOrder - totalBonding;
         return remain > 0;
       });
@@ -241,87 +225,51 @@ export class WorkableBondingService {
       if (active) {
         const allEntries = active.entries;
 
-        const layerNetQtys: Record<number, number> = {
-          1: 0,
-          2: 0,
-          3: 0,
-          4: 0,
-          5: 0,
-        };
-        const layerBondingQtys: Record<number, number> = {
-          1: 0,
-          2: 0,
-          3: 0,
-          4: 0,
-          5: 0,
-        };
-        const layerHoleQtys: Record<number, number> = {
-          1: 0,
-          2: 0,
-          3: 0,
-          4: 0,
-          5: 0,
-        };
+        const layerNetQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        const layerBondingQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+        const layerHoleQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
 
         for (const e of allEntries) {
-          const layerIdx = e.layer_index || 1;
+          // Clamp layer index to 1–4
+          const layerIdx = Math.min(Math.max(e.layer_index || 1, 1), 4);
 
-          if (e.is_hole) {
-            layerHoleQtys[5] = (layerHoleQtys[5] || 0) + e.quantity_hole_remain;
-          } else if (e.foaming_date && !e.foaming_date_completed) {
-            continue;
-          } else {
-            layerNetQtys[layerIdx] = Math.max(
-              layerNetQtys[layerIdx] || 0,
-              e.net_qty,
-            );
+          layerBondingQtys[layerIdx] += e.bonding_qty;
+
+          if (e.foaming_date && !e.foaming_date_completed) {
+            continue; // skip foaming-in-progress
           }
 
-          layerBondingQtys[layerIdx] =
-            (layerBondingQtys[layerIdx] || 0) + e.bonding_qty;
+          if (e.is_hole) {
+            layerHoleQtys[layerIdx] += e.quantity_hole_remain;
+            // net_qty already reduced by NG in raw data; do not set layerNetQtys
+          } else {
+            layerNetQtys[layerIdx] = Math.max(layerNetQtys[layerIdx], e.net_qty);
+          }
         }
 
         const layers = { ...emptyLayers };
-        for (const [idxStr, net] of Object.entries(layerNetQtys)) {
-          const idx = Number(idxStr);
-          if (idx === 5) continue;
+        let minWorkable = Infinity;
+        for (let idx = 1; idx <= 4; idx++) {
+          const net = layerNetQtys[idx];
+          const bonding = layerBondingQtys[idx];
+          const holeRemain = layerHoleQtys[idx];
 
-          const bonding = layerBondingQtys[idx] || 0;
-          const holeQty = layerHoleQtys[idx] || 0;
-
-          let layerWorkable = 0;
-          if (holeQty === 0) {
-            layerWorkable = Math.max(net - bonding, 0);
-          } else {
-            layerWorkable = 0;
-          }
-
-          const layerName = layerNames[idx];
-          if (layerName) layers[layerName] = layerWorkable;
+          const layerWorkable = holeRemain === 0 ? Math.max(net - bonding, 0) : 0;
+          layers[layerNames[idx]] = layerWorkable;
+          if (layerWorkable < minWorkable) minWorkable = layerWorkable;
         }
 
-        layers['Hole'] = layerHoleQtys[5] || 0;
-
-        const totalBonding = allEntries.reduce(
-          (sum, e) => sum + e.bonding_qty,
-          0,
-        );
+        const totalHoleRemain = Object.values(layerHoleQtys).reduce((sum, v) => sum + v, 0);
+        const totalBonding = allEntries.reduce((sum, e) => sum + e.bonding_qty, 0);
         const remainProduksi = active.quantityOrder - totalBonding;
 
-        const totalHoleRemain = allEntries.reduce((sum, e) => {
-          if (e.is_hole) return sum + e.quantity_hole_remain;
-          return sum;
-        }, 0);
-
         const totalHoleProcessed = allEntries.reduce((sum, e) => {
-          if (e.is_hole)
-            return sum + (e.quantity_hole - e.quantity_hole_remain);
+          if (e.is_hole) return sum + (e.quantity_hole - e.quantity_hole_remain);
           return sum;
         }, 0);
 
         const totalFoaming = allEntries.reduce((sum, e) => {
-          if (e.foaming_date && !e.foaming_date_completed)
-            return sum + e.cutting_qty;
+          if (e.foaming_date && !e.foaming_date_completed) return sum + e.cutting_qty;
           return sum;
         }, 0);
 
@@ -336,9 +284,7 @@ export class WorkableBondingService {
           );
           if (activeFoamingEntries.length > 0) {
             const foamingDateStr = activeFoamingEntries[0].foaming_date
-              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString(
-                  'id-ID',
-                )
+              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString('id-ID')
               : 'TBD';
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
@@ -351,9 +297,7 @@ export class WorkableBondingService {
 
           if (
             statuses.length === 0 &&
-            allEntries.some(
-              (e) => e.cutting_qty > 0 && !e.foaming_date && !e.is_hole,
-            )
+            allEntries.some((e) => e.cutting_qty > 0 && !e.foaming_date && !e.is_hole)
           ) {
             statuses.push('Cutting in progress');
           }
@@ -371,11 +315,7 @@ export class WorkableBondingService {
           week: active.week,
           quantityOrder: active.quantityOrder,
           ...layers,
-          workable: Math.max(
-            Math.min(...Object.values(layers).filter((v, i) => i < 4)) -
-              totalBonding,
-            0,
-          ),
+          workable: minWorkable === Infinity ? 0 : minWorkable,
           bonding: totalBonding,
           'Remain Produksi': remainProduksi,
           status:
@@ -393,9 +333,8 @@ export class WorkableBondingService {
 
     return result.sort(
       (a, b) =>
-        a.shipToName.localeCompare(b.shipToName, undefined, {
-          sensitivity: 'base',
-        }) || a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
+        a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
+        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
     );
   }
 
@@ -458,7 +397,7 @@ export class WorkableBondingService {
       const replacement_qty = replMap.get(key) || 0;
       ngWithLayer.push({
         sku: ng.sku,
-        layer_index,
+        layer_index: Math.min(Math.max(layer_index, 1), 4),
         ng_qty: ng.ng_qty,
         replacement_qty,
       });
@@ -470,20 +409,19 @@ export class WorkableBondingService {
       2: 'Layer 2',
       3: 'Layer 3',
       4: 'Layer 4',
-      5: 'Hole',
     };
 
     for (const [skuKey, week] of activeWeeks) {
       const [shipToName, sku] = skuKey.split('|');
       const ngItems = ngWithLayer.filter((item) => item.sku === sku);
       if (ngItems.length === 0) {
-        for (const [layerIdx, layerName] of Object.entries(layerNameMap)) {
+        for (let layerIdx = 1; layerIdx <= 4; layerIdx++) {
           result.push({
             shipToName,
             sku,
             week: Number(week),
-            layer_index: Number(layerIdx),
-            layer_name: layerName,
+            layer_index: layerIdx,
+            layer_name: layerNameMap[layerIdx],
             ng_qty: 0,
             replacement_qty: 0,
             net_ng_qty: 0,
@@ -498,8 +436,7 @@ export class WorkableBondingService {
             sku,
             week: Number(week),
             layer_index: item.layer_index,
-            layer_name:
-              layerNameMap[item.layer_index] || `Layer ${item.layer_index}`,
+            layer_name: layerNameMap[item.layer_index],
             ng_qty: item.ng_qty,
             replacement_qty: item.replacement_qty,
             net_ng_qty,
@@ -511,9 +448,7 @@ export class WorkableBondingService {
 
     return result.sort(
       (a, b) =>
-        a.shipToName.localeCompare(b.shipToName, undefined, {
-          sensitivity: 'base',
-        }) ||
+        a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
         a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }) ||
         a.week - b.week ||
         a.layer_index - b.layer_index,
@@ -558,7 +493,7 @@ export class WorkableBondingService {
           SELECT 
             br.sku,
             COALESCE(br.s_code, 'MAIN') AS s_code,
-            MAX(br.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS "net_ng_qty"
+            GREATEST(br.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS "net_ng_qty"
           FROM (
             SELECT br.sku, COALESCE(br.s_code, 'MAIN') AS s_code, SUM(br.ng_quantity) AS "ng_qty"
             FROM bonding_reject br
