@@ -6,34 +6,27 @@ import { DataSource } from 'typeorm';
 export class WorkableBondingService {
   constructor(private dataSource: DataSource) {}
 
-  // ───────────────────────────────────────────────
-  // Dapatkan semua planned week per (shipToName, sku)
-  // ───────────────────────────────────────────────
   private async getPlannedWeeks(): Promise<any[]> {
     return await this.dataSource.query(`
       SELECT 
-        c.customer_name AS shipToName,
+        c.customer_name AS "shipToName",
         p.sku,
-        poi.week_number AS week,
-        SUM(poi.planned_qty) AS quantityOrder
+        poi.week_number AS "week",
+        SUM(poi.planned_qty) AS "quantityOrder"
       FROM production_order_items poi
-      JOIN production_orders po ON poi.orderOrderId = po.order_id
-      JOIN customers c ON po.customerCustomerId = c.customer_id
-      JOIN products p ON poi.productProductId = p.product_id
+      JOIN production_orders po ON poi.order_order_id = po.order_id
+      JOIN customers c ON po.customer_customer_id = c.customer_id
+      JOIN products p ON poi.product_product_id = p.product_id
       WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
       GROUP BY c.customer_name, p.sku, poi.week_number
       ORDER BY c.customer_name, p.sku, poi.week_number
     `);
   }
 
-  // ───────────────────────────────────────────────
-  // Hitung status produksi per (shipToName, sku, week, sCode/layer)
-  // ───────────────────────────────────────────────
   private async calculateProductionStatus(): Promise<Map<string, any>> {
     const planned = await this.getPlannedWeeks();
     const skuWeekMap = new Map<string, any>();
 
-    // Inisialisasi semua planned week
     for (const p of planned) {
       const key = `${p.shipToName}|${p.sku}|${p.week}`;
       skuWeekMap.set(key, {
@@ -45,7 +38,6 @@ export class WorkableBondingService {
       });
     }
 
-    // Ambil data aktual dari cutting, bonding, dan NG
     const actualData = await this.getRawWorkableData();
     for (const row of actualData) {
       const key = `${row.shipToName}|${row.sku}|${row.week}`;
@@ -57,16 +49,14 @@ export class WorkableBondingService {
           shipToName: row.shipToName,
           sku: row.sku,
           week: row.week,
-          quantityOrder: 0, // Jika tidak ada planned, bisa dihitung dari actual
+          quantityOrder: 0,
           entries: [row],
         });
       }
     }
 
-    // Proses setiap entry untuk menambahkan info foaming dan hole
     for (const entry of skuWeekMap.values()) {
       for (const item of entry.entries) {
-        // FIX: Default values jika null
         item.cutting_qty = item.cutting_qty || 0;
         item.net_qty = item.net_qty || 0;
         item.bonding_qty = item.bonding_qty || 0;
@@ -81,9 +71,6 @@ export class WorkableBondingService {
     return skuWeekMap;
   }
 
-  // ───────────────────────────────────────────────
-  // 1. WORKABLE BONDING (VIEW 5) + FULL AUTO-ADVANCE + LOGIKA HOLE & FOAMING
-  // ───────────────────────────────────────────────
   async getWorkableBonding(): Promise<any[]> {
     const statusMap = await this.calculateProductionStatus();
     const skuGroups = new Map<string, any[]>();
@@ -98,7 +85,6 @@ export class WorkableBondingService {
     for (const weeks of skuGroups.values()) {
       weeks.sort((a, b) => a.week - b.week);
 
-      // Cari week aktif berdasarkan remain produksi > 0
       const active = weeks.find((w) => {
         const totalBonding = w.entries.reduce(
           (sum, e) => sum + e.bonding_qty,
@@ -109,54 +95,44 @@ export class WorkableBondingService {
       });
 
       if (active) {
-        // Gabungkan semua entries untuk menghitung workable
         const allEntries = active.entries;
 
-        // Filter entries yang tidak dalam foaming dan bukan hole
         const availableEntries = allEntries.filter((e) => {
           const isFoaming = e.foaming_date && !e.foaming_date_completed;
           const isHole = e.is_hole;
           return !isFoaming && !isHole;
         });
 
-        // Hitung min net_qty dari entries yang available
         const netQtys = availableEntries
           .map((e) => e.net_qty)
           .filter((v) => typeof v === 'number' && !isNaN(v)) as number[];
         const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
 
-        // Hitung total bonding
         const totalBonding = allEntries.reduce(
           (sum, e) => sum + e.bonding_qty,
           0,
         );
         const remainProduksi = active.quantityOrder - totalBonding;
 
-        // Hitung total quantity hole yang belum selesai
         const totalHoleRemain = allEntries.reduce((sum, e) => {
           if (e.is_hole) return sum + e.quantity_hole_remain;
           return sum;
         }, 0);
 
-        // Hitung total foaming yang belum selesai
         const totalFoaming = allEntries.reduce((sum, e) => {
           if (e.foaming_date && !e.foaming_date_completed)
             return sum + e.cutting_qty;
           return sum;
         }, 0);
 
-        // Workable adalah min dari net_qty (dari available entries) dikurangi bonding
-        // Tapi jika ada hole, maka workable bisa dikurangi jumlah hole yang belum selesai
         let workable = Math.max(minNetQty - totalBonding, 0);
 
-        // Remarks
         let remarks = '';
         if (remainProduksi <= 0) {
           remarks = 'Bonding completed';
         } else {
           const statuses = [];
 
-          // Tambahkan info foaming date YANG BELUM SELESAI
           const activeFoamingEntries = allEntries.filter(
             (e) => e.foaming_date && !e.foaming_date_completed,
           );
@@ -169,7 +145,6 @@ export class WorkableBondingService {
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
 
-          // Tambahkan info hole process YANG BELUM SELESAI
           if (totalHoleRemain > 0) {
             const totalHoleQty = allEntries.reduce((sum, e) => {
               if (e.is_hole) return sum + e.quantity_hole;
@@ -180,7 +155,6 @@ export class WorkableBondingService {
             );
           }
 
-          // Jika tidak ada foaming atau hole yang aktif, kembalikan ke cutting
           if (
             statuses.length === 0 &&
             allEntries.some(
@@ -190,7 +164,6 @@ export class WorkableBondingService {
             statuses.push('Cutting in progress');
           }
 
-          // Jika tidak ada cutting juga, maka waiting
           if (statuses.length === 0) {
             statuses.push('Waiting for cutting');
           }
@@ -227,9 +200,6 @@ export class WorkableBondingService {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // 2. WORKABLE BONDING DETAIL (VIEW 6) + FULL AUTO-ADVANCE + LOGIKA HOLE & FOAMING
-  // ───────────────────────────────────────────────
   async getWorkableDetail(): Promise<any[]> {
     const statusMap = await this.calculateProductionStatus();
     const skuGroups = new Map<string, any[]>();
@@ -271,7 +241,6 @@ export class WorkableBondingService {
       if (active) {
         const allEntries = active.entries;
 
-        // Inisialisasi layer qty
         const layerNetQtys: Record<number, number> = {
           1: 0,
           2: 0,
@@ -292,47 +261,38 @@ export class WorkableBondingService {
           3: 0,
           4: 0,
           5: 0,
-        }; // Qty yang di-hole
+        };
 
-        // Proses setiap entry
         for (const e of allEntries) {
           const layerIdx = e.layer_index || 1;
 
           if (e.is_hole) {
-            // Jika entry adalah hole, tambahkan ke layer hole
             layerHoleQtys[5] = (layerHoleQtys[5] || 0) + e.quantity_hole_remain;
           } else if (e.foaming_date && !e.foaming_date_completed) {
-            // Jika entry dalam foaming, tidak dihitung ke net_qty manapun
             continue;
           } else {
-            // Jika entry bukan hole dan bukan foaming, tambahkan ke layer aslinya
             layerNetQtys[layerIdx] = Math.max(
               layerNetQtys[layerIdx] || 0,
               e.net_qty,
             );
           }
 
-          // Bonding tetap dihitung per layer aslinya
           layerBondingQtys[layerIdx] =
             (layerBondingQtys[layerIdx] || 0) + e.bonding_qty;
         }
 
-        // Hitung workable per layer (net - bonding)
         const layers = { ...emptyLayers };
         for (const [idxStr, net] of Object.entries(layerNetQtys)) {
           const idx = Number(idxStr);
-          if (idx === 5) continue; // Skip hole layer di sini, akan dihitung terpisah
+          if (idx === 5) continue;
 
           const bonding = layerBondingQtys[idx] || 0;
-          const holeQty = layerHoleQtys[idx] || 0; // Qty yang di-hole dari layer ini
+          const holeQty = layerHoleQtys[idx] || 0;
 
-          // Workable layer adalah net - bonding, TAPI jika layer dalam foaming/hole, maka workable = 0
           let layerWorkable = 0;
           if (holeQty === 0) {
-            // Jika tidak ada hole di layer ini, hitung normal
             layerWorkable = Math.max(net - bonding, 0);
           } else {
-            // Jika ada hole, maka net_qty dari layer ini hilang, dan pindah ke hole
             layerWorkable = 0;
           }
 
@@ -340,44 +300,37 @@ export class WorkableBondingService {
           if (layerName) layers[layerName] = layerWorkable;
         }
 
-        // Update hole layer: jumlah total yang masih di-hole
         layers['Hole'] = layerHoleQtys[5] || 0;
 
-        // Total bonding
         const totalBonding = allEntries.reduce(
           (sum, e) => sum + e.bonding_qty,
           0,
         );
         const remainProduksi = active.quantityOrder - totalBonding;
 
-        // Total hole remain
         const totalHoleRemain = allEntries.reduce((sum, e) => {
           if (e.is_hole) return sum + e.quantity_hole_remain;
           return sum;
         }, 0);
 
-        // Total hole processed
         const totalHoleProcessed = allEntries.reduce((sum, e) => {
           if (e.is_hole)
             return sum + (e.quantity_hole - e.quantity_hole_remain);
           return sum;
         }, 0);
 
-        // Total foaming
         const totalFoaming = allEntries.reduce((sum, e) => {
           if (e.foaming_date && !e.foaming_date_completed)
             return sum + e.cutting_qty;
           return sum;
         }, 0);
 
-        // Remarks
         let remarks = '';
         if (remainProduksi <= 0) {
           remarks = 'Bonding completed';
         } else {
           const statuses = [];
 
-          // Tambahkan info foaming date YANG BELUM SELESAI
           const activeFoamingEntries = allEntries.filter(
             (e) => e.foaming_date && !e.foaming_date_completed,
           );
@@ -390,14 +343,12 @@ export class WorkableBondingService {
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
 
-          // Tambahkan info hole process YANG BELUM SELESAI
           if (totalHoleRemain > 0) {
             statuses.push(
               `Hole Processing: ${totalHoleProcessed}/${totalHoleProcessed + totalHoleRemain} done`,
             );
           }
 
-          // Jika tidak ada foaming atau hole yang aktif, kembalikan ke cutting
           if (
             statuses.length === 0 &&
             allEntries.some(
@@ -407,7 +358,6 @@ export class WorkableBondingService {
             statuses.push('Cutting in progress');
           }
 
-          // Jika tidak ada cutting juga, maka waiting
           if (statuses.length === 0) {
             statuses.push('Waiting for cutting');
           }
@@ -423,7 +373,7 @@ export class WorkableBondingService {
           ...layers,
           workable: Math.max(
             Math.min(...Object.values(layers).filter((v, i) => i < 4)) -
-              totalBonding, // Hanya layer 1-4
+              totalBonding,
             0,
           ),
           bonding: totalBonding,
@@ -449,12 +399,7 @@ export class WorkableBondingService {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // 3. WORKABLE BONDING NG (VIEW 7) — FULLY SYNCHRONIZED
-  // Mengikuti EXACTLY week aktif dari bonding
-  // ───────────────────────────────────────────────
   async getWorkableReject(): Promise<any[]> {
-    // Dapatkan week aktif dari workable bonding
     const activeWeeks = new Map<string, number>();
     const bondingData = await this.getWorkableBonding();
     for (const row of bondingData) {
@@ -463,7 +408,6 @@ export class WorkableBondingService {
 
     if (activeWeeks.size === 0) return [];
 
-    // Ambil data NG per layer
     const ngData = await this.dataSource.query(`
       SELECT 
         br.sku,
@@ -493,11 +437,10 @@ export class WorkableBondingService {
         COALESCE(al.second_item_number, 'MAIN') AS s_code,
         COALESCE(al.layer_index, 1) AS layer_index
       FROM products p
-      LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
+      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id
       WHERE p.category = 'FOAM'
     `);
 
-    // Build maps
     const replMap = new Map<string, number>();
     for (const r of replacementData) {
       replMap.set(`${r.sku}|${r.s_code}`, r.replacement_qty);
@@ -508,7 +451,6 @@ export class WorkableBondingService {
       layerIndexMap.set(`${l.sku}|${l.s_code}`, l.layer_index);
     }
 
-    // Gabungkan NG + layer
     const ngWithLayer: any[] = [];
     for (const ng of ngData) {
       const key = `${ng.sku}|${ng.s_code}`;
@@ -522,7 +464,6 @@ export class WorkableBondingService {
       });
     }
 
-    // Assign ke active week
     const result: any[] = [];
     const layerNameMap: Record<number, string> = {
       1: 'Layer 1',
@@ -534,10 +475,8 @@ export class WorkableBondingService {
 
     for (const [skuKey, week] of activeWeeks) {
       const [shipToName, sku] = skuKey.split('|');
-      // Cari NG untuk SKU ini
       const ngItems = ngWithLayer.filter((item) => item.sku === sku);
       if (ngItems.length === 0) {
-        // Tetap buat entri kosong per layer jika tidak ada NG
         for (const [layerIdx, layerName] of Object.entries(layerNameMap)) {
           result.push({
             shipToName,
@@ -581,50 +520,47 @@ export class WorkableBondingService {
     );
   }
 
-  // ───────────────────────────────────────────────
-  // HELPER: Raw data aktual (cutting, bonding, NG) + foaming & hole
-  // ───────────────────────────────────────────────
   private async getRawWorkableData(): Promise<any[]> {
     return await this.dataSource.query(`
       SELECT 
-        c.customer_name AS shipToName,
+        c.customer_name AS "shipToName",
         p.sku,
-        poi.week_number AS week,
-        COALESCE(al.second_item_number, 'MAIN') AS s_code,
-        COALESCE(al.layer_index, 1) AS layer_index,
-        COALESCE(ca.cutting_qty, 0) AS cutting_qty,
-        COALESCE(ca.net_qty, 0) AS net_qty,
-        COALESCE(ca.foaming_date, NULL) AS foaming_date,
-        COALESCE(ca.foaming_date_completed, 0) AS foaming_date_completed,
-        COALESCE(ca.is_hole, 0) AS is_hole,
-        COALESCE(ca.quantity_hole, 0) AS quantity_hole,
-        COALESCE(ca.quantity_hole_remain, 0) AS quantity_hole_remain,
-        COALESCE(bs.bonding_qty, 0) AS bonding_qty
+        poi.week_number AS "week",
+        COALESCE(al.second_item_number, 'MAIN') AS "s_code",
+        COALESCE(al.layer_index, 1) AS "layer_index",
+        COALESCE(ca.cutting_qty, 0) AS "cutting_qty",
+        COALESCE(ca.net_qty, 0) AS "net_qty",
+        COALESCE(ca.foaming_date, NULL) AS "foaming_date",
+        COALESCE(ca.foaming_date_completed, 0) AS "foaming_date_completed",
+        COALESCE(ca.is_hole, 0) AS "is_hole",
+        COALESCE(ca.quantity_hole, 0) AS "quantity_hole",
+        COALESCE(ca.quantity_hole_remain, 0) AS "quantity_hole_remain",
+        COALESCE(bs.bonding_qty, 0) AS "bonding_qty"
       FROM production_order_items poi
-      JOIN production_orders po ON poi.orderOrderId = po.order_id
-      JOIN customers c ON po.customerCustomerId = c.customer_id
-      JOIN products p ON poi.productProductId = p.product_id
-      LEFT JOIN assembly_layers al ON p.product_id = al.productProductId
+      JOIN production_orders po ON poi.order_order_id = po.order_id
+      JOIN customers c ON po.customer_customer_id = c.customer_id
+      JOIN products p ON poi.product_product_id = p.product_id
+      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id
       LEFT JOIN (
         SELECT 
           e.sku,
           e.week,
-          COALESCE(e.sCode, 'MAIN') AS sCode,
-          SUM(e.quantityProduksi) AS cutting_qty,
-          SUM(e.quantityProduksi) - COALESCE(ng.net_ng_qty, 0) AS net_qty,
-          MAX(e.foaming_date) AS foaming_date,
-          MAX(CASE WHEN e.foaming_date_completed = 1 THEN 1 ELSE 0 END) AS foaming_date_completed,
-          MAX(CASE WHEN e.is_hole = 1 THEN 1 ELSE 0 END) AS is_hole,
-          SUM(e.quantity_hole) AS quantity_hole,
-          SUM(e.quantity_hole_remain) AS quantity_hole_remain
+          COALESCE(e.s_code, 'MAIN') AS "sCode",
+          SUM(e.quantity_produksi) AS "cutting_qty",
+          SUM(e.quantity_produksi) - COALESCE(ng.net_ng_qty, 0) AS "net_qty",
+          MAX(e.foaming_date) AS "foaming_date",
+          MAX(CASE WHEN e.foaming_date_completed = 1 THEN 1 ELSE 0 END) AS "foaming_date_completed",
+          MAX(CASE WHEN e.is_hole = 1 THEN 1 ELSE 0 END) AS "is_hole",
+          SUM(e.quantity_hole) AS "quantity_hole",
+          SUM(e.quantity_hole_remain) AS "quantity_hole_remain"
         FROM production_cutting_entries e
         LEFT JOIN (
           SELECT 
             br.sku,
             COALESCE(br.s_code, 'MAIN') AS s_code,
-            MAX(br.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS net_ng_qty
+            MAX(br.ng_qty - COALESCE(rp.replacement_qty, 0), 0) AS "net_ng_qty"
           FROM (
-            SELECT br.sku, COALESCE(br.s_code, 'MAIN') AS s_code, SUM(br.ng_quantity) AS ng_qty
+            SELECT br.sku, COALESCE(br.s_code, 'MAIN') AS s_code, SUM(br.ng_quantity) AS "ng_qty"
             FROM bonding_reject br
             WHERE br.status != 'CANCELLED'
             GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
@@ -633,24 +569,24 @@ export class WorkableBondingService {
             SELECT 
               br.sku,
               COALESCE(br.s_code, 'MAIN') AS s_code,
-              SUM(COALESCE(rp.processed_qty, 0)) AS replacement_qty
+              SUM(COALESCE(rp.processed_qty, 0)) AS "replacement_qty"
             FROM bonding_reject br
             LEFT JOIN replacement_progress rp ON br.id = rp.bonding_reject_id
             WHERE br.status != 'CANCELLED' AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
             GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
           ) rp ON br.sku = rp.sku AND br.s_code = rp.s_code
           GROUP BY br.sku, br.s_code
-        ) ng ON e.sku = ng.sku AND COALESCE(e.sCode, 'MAIN') = ng.s_code
+        ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
         WHERE e.week IS NOT NULL
-        GROUP BY e.sku, e.week, COALESCE(e.sCode, 'MAIN'), ng.net_ng_qty
-      ) ca ON p.sku = ca.sku AND poi.week_number = ca.week AND COALESCE(al.second_item_number, 'MAIN') = ca.sCode
+        GROUP BY e.sku, e.week, COALESCE(e.s_code, 'MAIN'), ng.net_ng_qty
+      ) ca ON p.sku = ca.sku AND poi.week_number = ca.week AND COALESCE(al.second_item_number, 'MAIN') = ca."sCode"
       LEFT JOIN (
-        SELECT sku, week, SUM(quantity_produksi) AS bonding_qty
+        SELECT sku, week, SUM(quantity_produksi) AS "bonding_qty"
         FROM bonding_summary
         GROUP BY sku, week
       ) bs ON p.sku = bs.sku AND poi.week_number = bs.week
       WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
-      ORDER BY c.customer_name, p.sku, poi.week_number, layer_index
+      ORDER BY c.customer_name, p.sku, poi.week_number, "layer_index"
     `);
   }
 }
