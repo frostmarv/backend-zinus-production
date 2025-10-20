@@ -77,7 +77,7 @@ export class CuttingReplacementService {
 
     query.orderBy('cp.created_at', 'DESC');
 
-    return query.getMany();
+    return await query.getMany();
   }
 
   async findOne(id: string): Promise<CuttingProcess> {
@@ -152,7 +152,6 @@ export class CuttingReplacementService {
 
     const updated = await this.cuttingProcessRepository.save(cuttingProcess);
 
-    // Update replacement dengan TOTAL yang sama
     await this.replacementService.update(replacementId, {
       processedQty: newTotalProcessed,
     });
@@ -170,7 +169,6 @@ export class CuttingReplacementService {
   ): Promise<CuttingProcess> {
     const cuttingProcess = await this.findOne(id);
 
-    // 🔒 Larang update processedQty melalui endpoint ini
     if (updateDto.processedQty !== undefined) {
       throw new BadRequestException(
         'Processed quantity cannot be updated directly. Use /cutting/replacement/process endpoint to add partial quantities.',

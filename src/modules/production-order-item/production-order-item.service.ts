@@ -24,10 +24,11 @@ export class ProductionOrderItemService {
       where: { itemId: id },
       relations: ['order', 'product'],
     });
-    if (!item)
+    if (!item) {
       throw new NotFoundException(
         `ProductionOrderItem dengan ID "${id}" tidak ditemukan`,
       );
+    }
     return item;
   }
 
@@ -43,8 +44,8 @@ export class ProductionOrderItemService {
   }): Promise<ProductionOrderItem> {
     const item = this.poiRepo.create({
       ...createDto,
-      sampleQty: createDto.sampleQty || 0,
+      sampleQty: createDto.sampleQty ?? 0,
     });
-    return this.poiRepo.save(item);
+    return await this.poiRepo.save(item);
   }
 }

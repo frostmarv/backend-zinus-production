@@ -10,25 +10,23 @@ import { Customer } from './customer.entity';
 
 @Entity('production_orders')
 export class ProductionOrder {
-  @PrimaryGeneratedColumn('increment', { name: 'order_id' })
+  @PrimaryGeneratedColumn({ name: 'order_id' })
   orderId: number;
 
-  @Column({ name: 'customerCustomerId' })
+  @Column({ name: 'customer_customer_id' })
   customerCustomerId: number;
 
-  @ManyToOne(() => Customer, (customer) => customer.customerId, {
-    onDelete: 'RESTRICT',
-  })
+  @ManyToOne(() => Customer, { onDelete: 'RESTRICT' })
   @JoinColumn({
-    name: 'customerCustomerId',
+    name: 'customer_customer_id',
     referencedColumnName: 'customerId',
   })
   customer: Customer;
 
-  @Column({ name: 'customer_po' })
+  @Column({ name: 'customer_po', type: 'varchar', length: 100 })
   customerPo: string;
 
-  @Column({ name: 'po_number' })
+  @Column({ name: 'po_number', type: 'varchar', length: 100 })
   poNumber: string;
 
   @Column({ name: 'order_date', type: 'date' })

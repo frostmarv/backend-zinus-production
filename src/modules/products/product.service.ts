@@ -21,19 +21,18 @@ export class ProductService {
 
   async findOne(id: number): Promise<Product> {
     const product = await this.productRepo.findOne({
-      where: { productId: id }, // 👈 property name
+      where: { productId: id },
     });
-    if (!product)
+    if (!product) {
       throw new NotFoundException(`Product dengan ID "${id}" tidak ditemukan`);
+    }
     return product;
   }
 
-  // 🔹 BARU: Cari berdasarkan SKU
   async findBySku(sku: string): Promise<Product | null> {
     return this.productRepo.findOne({ where: { sku } });
   }
 
-  // 🔹 BARU: Buat product baru
   async create(createDto: {
     itemNumber: string;
     sku: string;
@@ -51,6 +50,6 @@ export class ProductService {
       );
     }
     const product = this.productRepo.create(createDto);
-    return this.productRepo.save(product);
+    return await this.productRepo.save(product);
   }
 }

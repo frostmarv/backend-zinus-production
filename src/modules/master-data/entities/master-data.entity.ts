@@ -1,4 +1,4 @@
-// src/modules/master-data/entities/master-data.entity.ts
+// src/modules/master-data/entities/production-order.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -10,22 +10,22 @@ import { Customer } from '../../../entities/customer.entity';
 
 @Entity('production_orders')
 export class ProductionOrder {
-  @PrimaryGeneratedColumn()
+  @PrimaryGeneratedColumn({ name: 'order_id' })
   order_id: number;
 
-  @Column()
+  @Column({ name: 'customer_id', type: 'integer' })
   customer_id: number;
 
-  @ManyToOne(() => Customer)
-  @JoinColumn({ name: 'customer_id' })
+  @ManyToOne(() => Customer, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'customer_id', referencedColumnName: 'customerId' })
   customer: Customer;
 
-  @Column()
+  @Column({ name: 'customer_po', type: 'varchar', length: 100 })
   customer_po: string;
 
-  @Column()
+  @Column({ name: 'po_number', type: 'varchar', length: 100 })
   po_number: string;
 
-  @Column({ type: 'date', nullable: true })
+  @Column({ name: 'order_date', type: 'date', nullable: true })
   order_date: Date;
 }

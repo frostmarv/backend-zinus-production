@@ -30,13 +30,8 @@ export class MasterDataService {
   ) {}
 
   async getCustomers() {
-    const customers = await this.customerRepo.find({
-      // 🔴 Perbaikan: ganti is_active ke property name
-      // where: { is_active: true },
-      where: {}, // 🔵 Jika tidak ada field is_active, hapus filter
-    });
+    const customers = await this.customerRepo.find();
     return customers.map((c) => ({
-      // 🔴 Perbaikan: gunakan property name
       value: c.customerId,
       label: c.customerName,
     }));
@@ -44,9 +39,8 @@ export class MasterDataService {
 
   async getPoNumbers(customerId: number) {
     const orders = await this.orderRepo.find({
-      // 🔴 Perbaikan: gunakan property name
       where: { customer: { customerId } },
-      select: ['poNumber'], // 🔴 Perbaikan: gunakan property name
+      select: ['poNumber'],
     });
     const unique = [...new Set(orders.map((o) => o.poNumber))];
     return unique.map((po) => ({ value: po, label: po }));
@@ -54,9 +48,8 @@ export class MasterDataService {
 
   async getCustomerPos(poNumber: string) {
     const orders = await this.orderRepo.find({
-      // 🔴 Perbaikan: gunakan property name
       where: { poNumber },
-      select: ['customerPo'], // 🔴 Perbaikan: gunakan property name
+      select: ['customerPo'],
     });
     const unique = [...new Set(orders.map((o) => o.customerPo))];
     return unique.map((cpo) => ({ value: cpo, label: cpo }));
@@ -90,13 +83,13 @@ export class MasterDataService {
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
-      .leftJoin('assembly_layers', 'al', 'al.productProductId = p.product_id')
+      .leftJoinAndSelect('p.assemblyLayers', 'al')
       .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select([
         'poi.planned_qty as planned_qty',
         'p.item_number as item_number',
-        'al.second_item_number as second_item_number',
+        'al.secondItemNumber as second_item_number',
         'al.description as description',
       ])
       .getRawMany();
@@ -131,13 +124,13 @@ export class MasterDataService {
       .createQueryBuilder('poi')
       .innerJoin('poi.order', 'po')
       .innerJoin('poi.product', 'p')
-      .leftJoin('assembly_layers', 'al', 'al.productProductId = p.product_id')
+      .leftJoinAndSelect('p.assemblyLayers', 'al')
       .where('po.customerPo = :customerPo', { customerPo })
       .andWhere('p.sku = :sku', { sku })
       .select([
         'poi.week_number as week_number',
         'p.item_number as item_number',
-        'al.second_item_number as second_item_number',
+        'al.secondItemNumber as second_item_number',
         'al.description as description',
       ])
       .getRawMany();
@@ -221,10 +214,10 @@ export class MasterDataService {
 
     const productionTotal = await this.cuttingEntryRepo
       .createQueryBuilder('pce')
-      .where('pce.poNumber = :poNumber', { poNumber })
+      .where('pce.po_number = :poNumber', { poNumber })
       .andWhere('pce.sku = :sku', { sku })
-      .andWhere('pce.sCode = :sCode', { sCode })
-      .select('COALESCE(SUM(pce.quantityProduksi), 0)', 'total')
+      .andWhere('pce.s_code = :sCode', { sCode })
+      .select('COALESCE(SUM(pce.quantity_produksi), 0)', 'total')
       .getRawOne();
 
     const totalProduced = Number(productionTotal?.total || 0);

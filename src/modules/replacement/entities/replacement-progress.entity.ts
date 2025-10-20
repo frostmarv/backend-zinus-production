@@ -1,3 +1,4 @@
+// src/modules/replacement/entities/replacement-progress.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -26,25 +27,24 @@ export class ReplacementProgress {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  // ✅ Ganti 'enum' → 'varchar'
-  @Column({ name: 'source_dept', type: 'varchar' })
+  @Column({ name: 'source_dept', type: 'varchar', length: 20 })
   sourceDept: DepartmentType;
 
-  @Column({ name: 'target_dept', type: 'varchar' })
+  @Column({ name: 'target_dept', type: 'varchar', length: 20 })
   targetDept: DepartmentType;
 
-  @Column({ name: 'source_batch_number' })
+  @Column({ name: 'source_batch_number', type: 'varchar', length: 100 })
   sourceBatchNumber: string;
 
-  @Column({ name: 'requested_qty', type: 'int' })
+  @Column({ name: 'requested_qty', type: 'integer' })
   requestedQty: number;
 
-  @Column({ name: 'processed_qty', type: 'int', default: 0 })
+  @Column({ name: 'processed_qty', type: 'integer', default: 0 })
   processedQty: number;
 
-  // ✅ Ganti 'enum' → 'varchar'
   @Column({
     type: 'varchar',
+    length: 20,
     default: ReplacementStatus.PENDING,
   })
   status: ReplacementStatus;
@@ -52,16 +52,16 @@ export class ReplacementProgress {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
-  @Column({ name: 'bonding_reject_id', nullable: true })
+  @Column({ name: 'bonding_reject_id', type: 'varchar', length: 100, nullable: true })
   bondingRejectId: string;
 
   @ManyToOne(() => BondingReject, { nullable: true })
   @JoinColumn({ name: 'bonding_reject_id' })
   bondingReject: BondingReject;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

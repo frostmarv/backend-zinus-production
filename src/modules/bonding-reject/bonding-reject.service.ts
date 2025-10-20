@@ -1,7 +1,7 @@
 // src/modules/bonding-reject/bonding-reject.service.ts
 import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { Repository, Brackets } from 'typeorm';
 import {
   BondingReject,
   BondingRejectStatus,
@@ -20,10 +20,6 @@ export class BondingRejectService {
     private readonly bondingRejectRepository: Repository<BondingReject>,
   ) {}
 
-  /**
-   * Generate batch number format: BND-YYYYMMDD-SHIFT-GROUP-XXXX
-   * Example: BND-20250109-1-A-0001
-   */
   async generateBatchNumber(shift: string, group: string): Promise<string> {
     const datePart = dayjs().format('YYYYMMDD');
     const prefix = `BND-${datePart}-${shift}-${group}`;
@@ -56,7 +52,6 @@ export class BondingRejectService {
       createDto.group,
     );
 
-    // ✅ Eksplisit: semua field disalin satu per satu, termasuk description
     const bondingReject = this.bondingRejectRepository.create({
       batch_number,
       timestamp: new Date(createDto.timestamp),
@@ -69,7 +64,7 @@ export class BondingRejectService {
       po_number: createDto.po_number,
       sku: createDto.sku,
       s_code: createDto.s_code,
-      description: createDto.description ?? null, // ✅ undefined → null
+      description: createDto.description ?? null,
       ng_quantity: createDto.ng_quantity,
       reason: createDto.reason,
       status: BondingRejectStatus.PENDING,
@@ -116,7 +111,7 @@ export class BondingRejectService {
 
     query.orderBy('br.timestamp', 'DESC');
 
-    return query.getMany();
+    return await query.getMany();
   }
 
   async findOne(id: string): Promise<BondingReject> {
@@ -150,7 +145,6 @@ export class BondingRejectService {
     updateDto: UpdateBondingRejectDto,
   ): Promise<BondingReject> {
     const bondingReject = await this.findOne(id);
-    // ✅ Jika updateDto berisi description, akan ikut terupdate
     Object.assign(bondingReject, updateDto);
     const updated = await this.bondingRejectRepository.save(bondingReject);
     this.logger.log(`Updated bonding reject ${id}, status: ${updated.status}`);

@@ -13,50 +13,46 @@ export class ProductionCuttingEntry {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 100 })
   customer: string;
 
-  @Column()
+  @Column({ name: 'po_number', type: 'varchar', length: 100 })
   poNumber: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 100 })
   sku: string;
 
-  @Column({ nullable: true })
+  @Column({ name: 's_code', type: 'varchar', length: 50, nullable: true })
   sCode: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   description: string;
 
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column({ name: 'quantity_order', type: 'numeric', precision: 10, scale: 2 })
   quantityOrder: number;
 
-  @Column('decimal', { precision: 10, scale: 2 })
+  @Column({ name: 'quantity_produksi', type: 'numeric', precision: 10, scale: 2 })
   quantityProduksi: number;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 10, nullable: true })
   week: string;
 
-  // ✅ Tambahkan kolom isHole dan foamingDate
   @Column({ name: 'is_hole', type: 'boolean', default: false })
   isHole: boolean;
 
-  @Column({ name: 'foaming_date', nullable: true })
-  foamingDate?: string; // ISO string format
+  @Column({ name: 'foaming_date', type: 'varchar', length: 20, nullable: true })
+  foamingDate?: string;
 
-  // ✅ Tambahkan kolom baru untuk logika tambahan
   @Column({ name: 'foaming_date_completed', type: 'boolean', default: false })
   foamingDateCompleted: boolean;
 
-  @Column({ name: 'quantity_hole', type: 'int', default: 0 })
+  @Column({ name: 'quantity_hole', type: 'integer', default: 0 })
   quantityHole: number;
 
-  @Column({ name: 'quantity_hole_remain', type: 'int', default: 0 })
+  @Column({ name: 'quantity_hole_remain', type: 'integer', default: 0 })
   quantityHoleRemain: number;
 
-  @ManyToOne(() => ProductionCuttingRecord, (record) => record.entries, {
-    onDelete: 'CASCADE',
-  })
+  @ManyToOne(() => ProductionCuttingRecord, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'production_cutting_record_id' })
   productionCuttingRecord: ProductionCuttingRecord;
 }

@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Cron } from '@nestjs/schedule'; // 👈 Tambahkan ini
+import { Cron } from '@nestjs/schedule';
 import { CuttingRecord } from './cutting.entity';
 import { BalokEntity } from './balok.entity';
 import { ActualEntity } from './actual.entity';
@@ -16,7 +16,6 @@ import { CreateCuttingDto } from './dto/create-cutting.dto';
 import { UpdateCuttingDto } from './dto/update-cutting.dto';
 import { CreateProductionCuttingDto } from './dto/create-production-cutting.dto';
 
-// Helper: konversi ke number, return null jika invalid
 function parseNumber(value: any): number | null {
   if (value === undefined || value === null || value === '') return null;
   const num = Number(value);
@@ -245,7 +244,7 @@ export class CuttingService {
           week: entry.week || null,
           isHole: entry.isHole || false,
           foamingDate: entry.foamingDate || null,
-          foamingDateCompleted: !!entry.foamingDate ? false : false, // false jika ada foamingDate
+          foamingDateCompleted: !!entry.foamingDate ? false : false,
           quantityHole: 0,
           quantityHoleRemain: quantityProduksi,
           productionCuttingRecord: savedRecord,
@@ -304,9 +303,9 @@ export class CuttingService {
       const result = await this.productionCuttingEntryRepo
         .createQueryBuilder('entry')
         .select('SUM(entry.quantityProduksi)', 'total')
-        .where('entry.poNumber = :poNumber', { poNumber })
+        .where('entry.po_number = :poNumber', { poNumber })
         .andWhere('entry.sku = :sku', { sku })
-        .andWhere('entry.sCode = :sCode', { sCode })
+        .andWhere('entry.s_code = :sCode', { sCode })
         .getRawOne();
 
       totalProducedMap.set(key, parseFloat(result?.total || 0));
@@ -368,7 +367,6 @@ export class CuttingService {
     return await this.productionCuttingEntryRepo.save(entry);
   }
 
-  // 🔁 CRON JOB: Otomatis tandai foamingDateCompleted = true setiap 10 menit
   @Cron('*/10 * * * *')
   async autoCompleteFoamingDates() {
     const now = new Date();
@@ -381,9 +379,9 @@ export class CuttingService {
         .createQueryBuilder()
         .update(ProductionCuttingEntry)
         .set({ foamingDateCompleted: true })
-        .where('foamingDate IS NOT NULL')
-        .andWhere('foamingDate <= :now', { now })
-        .andWhere('foamingDateCompleted = false')
+        .where('foaming_date IS NOT NULL')
+        .andWhere('foaming_date <= :now', { now })
+        .andWhere('foaming_date_completed = false')
         .execute();
 
       if (result.affected && result.affected > 0) {

@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+// src/modules/bonding/bonding.service.ts
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BondingSummary } from '../../entities/bonding-summary.entity';
@@ -11,8 +12,12 @@ export class BondingService {
     private bondingSummaryRepository: Repository<BondingSummary>,
   ) {}
 
-  async createSummary(createBondingSummaryDto: CreateBondingSummaryDto): Promise<any> {
-    // Map DTO (snake_case) to Entity (camelCase)
+  async createSummary(createBondingSummaryDto: CreateBondingSummaryDto): Promise<{
+    success: boolean;
+    message: string;
+    data: BondingSummary;
+  }> {
+    // Gunakan transformasi DTO ke entity via `create`, yang lebih aman
     const bondingSummary = this.bondingSummaryRepository.create({
       timestamp: createBondingSummaryDto.timestamp,
       shift: createBondingSummaryDto.shift,
@@ -28,7 +33,7 @@ export class BondingService {
       week: createBondingSummaryDto.week,
       quantityProduksi: createBondingSummaryDto.quantity_produksi,
     });
-    
+
     const savedSummary = await this.bondingSummaryRepository.save(bondingSummary);
 
     return {
@@ -39,6 +44,7 @@ export class BondingService {
   }
 
   async getAllSummaries(): Promise<BondingSummary[]> {
+    // Gunakan query builder jika ingin menambahkan join atau filter tambahan di masa depan
     return await this.bondingSummaryRepository.find({
       order: {
         createdAt: 'DESC',
@@ -46,9 +52,15 @@ export class BondingService {
     });
   }
 
-  async getSummaryById(id: number): Promise<BondingSummary | null> {
-    return await this.bondingSummaryRepository.findOne({
+  async getSummaryById(id: number): Promise<BondingSummary> {
+    const summary = await this.bondingSummaryRepository.findOne({
       where: { id },
     });
+
+    if (!summary) {
+      throw new NotFoundException(`Bonding summary with ID ${id} not found`);
+    }
+
+    return summary;
   }
 }

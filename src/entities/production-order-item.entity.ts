@@ -11,34 +11,30 @@ import { Product } from './product.entity';
 
 @Entity('production_order_items')
 export class ProductionOrderItem {
-  @PrimaryGeneratedColumn('increment', { name: 'item_id' })
+  @PrimaryGeneratedColumn({ name: 'item_id' })
   itemId: number;
 
-  @Column({ name: 'orderOrderId' })
+  @Column({ name: 'order_order_id' })
   orderOrderId: number;
 
-  @ManyToOne(() => ProductionOrder, (order) => order.orderId, {
-    onDelete: 'CASCADE',
-  })
-  @JoinColumn({ name: 'orderOrderId', referencedColumnName: 'orderId' })
+  @ManyToOne(() => ProductionOrder, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'order_order_id', referencedColumnName: 'orderId' })
   order: ProductionOrder;
 
-  @Column({ name: 'productProductId' })
+  @Column({ name: 'product_product_id' })
   productProductId: number;
 
-  @ManyToOne(() => Product, (product) => product.productId, {
-    onDelete: 'RESTRICT',
-  })
-  @JoinColumn({ name: 'productProductId', referencedColumnName: 'productId' })
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'product_product_id', referencedColumnName: 'productId' })
   product: Product;
 
-  @Column({ name: 'planned_qty' })
+  @Column({ name: 'planned_qty', type: 'integer' })
   plannedQty: number;
 
-  @Column({ name: 'sample_qty', default: 0 })
+  @Column({ name: 'sample_qty', type: 'integer', default: 0 })
   sampleQty: number;
 
-  @Column({ name: 'week_number' })
+  @Column({ name: 'week_number', type: 'integer' })
   weekNumber: number;
 
   @Column({ name: 'i_d', type: 'date', nullable: true })
@@ -50,7 +46,6 @@ export class ProductionOrderItem {
   @Column({ name: 's_d', type: 'date', nullable: true })
   sD: Date | null;
 
-  // Virtual column: total_qty = planned_qty + sample_qty
   get totalPlanned(): number {
     return this.plannedQty + this.sampleQty;
   }

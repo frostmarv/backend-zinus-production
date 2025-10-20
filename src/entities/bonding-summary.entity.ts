@@ -1,3 +1,4 @@
+// src/entities/bonding-summary.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -52,12 +53,12 @@ export class BondingSummary {
   @Column({ type: 'varchar', length: 10 })
   week: string;
 
-  @Column({ name: 'quantity_produksi', type: 'int' })
+  @Column({ name: 'quantity_produksi', type: 'integer' }) // ✅ Ganti ke 'integer'
   quantityProduksi: number;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' }) // ✅ Tambahkan type
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' }) // ✅ Tambahkan type
   updatedAt: Date;
 }

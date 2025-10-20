@@ -1,5 +1,5 @@
 // src/modules/notification/notification.service.ts
-import { Injectable, NotFoundException, Logger, Inject } from '@nestjs/common'; // Tambahkan Inject
+import { Injectable, NotFoundException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import {
@@ -12,7 +12,6 @@ import { UpdateNotificationDto } from './dto/update-notification.dto';
 import { FirebaseService } from '../../common/firebase/firebase.service';
 import { FonnteService } from '../whatsapp/fonnte.service';
 import { UserService } from '../auth/user/user.service';
-// Import enum Department dan Role
 import { Department } from '../../common/enums/department.enum';
 import { Role } from '../../common/enums/role.enum';
 
@@ -24,13 +23,10 @@ export class NotificationService {
     @InjectRepository(Notification)
     private readonly notificationRepository: Repository<Notification>,
     private readonly firebaseService: FirebaseService,
-    private readonly fonnteService: FonnteService, // Tambahkan
-    private readonly userService: UserService, // Tambahkan
+    private readonly fonnteService: FonnteService,
+    private readonly userService: UserService,
   ) {}
 
-  /**
-   * Simpan notifikasi ke database DAN kirim push via FCM
-   */
   async send(createDto: CreateNotificationDto): Promise<Notification> {
     if (
       !createDto.recipientDepartments ||
@@ -60,15 +56,11 @@ export class NotificationService {
     const saved = await this.notificationRepository.save(notification);
     this.logger.log(`Notification saved with ID: ${saved.id}`);
 
-    // Kirim FCM
     await this.sendPushNotification(saved);
 
     return saved;
   }
 
-  /**
-   * Mapping department ke FCM topic
-   */
   private getFCMTopicForDepartments(
     departments: NotificationRecipientDepartment[],
   ): string[] {
@@ -81,15 +73,11 @@ export class NotificationService {
       if (dept === NotificationRecipientDepartment.BONDING) {
         topics.add('bonding_team');
       }
-      // extend mapping bila ada department lain
     }
 
     return Array.from(topics);
   }
 
-  /**
-   * Kirim push notification via FCM
-   */
   private async sendPushNotification(
     notification: Notification,
   ): Promise<void> {
@@ -103,7 +91,6 @@ export class NotificationService {
         return;
       }
 
-      // buat data payload sebagai string values (FCM data harus string)
       const dataPayload = {
         type: String(notification.type),
         entityId: notification.relatedEntityId
@@ -115,29 +102,23 @@ export class NotificationService {
       };
 
       for (const topic of topics) {
-        // messaging.send expects a single message object; sertakan notification + data + topic
         await this.firebaseService.messaging.send({
           notification: {
             title: notification.title,
             body: notification.message,
           },
-          data: dataPayload, // ✅ Perbaikan: gunakan 'data' bukan 'dataPayload'
-          topic: topic, // ✅ Perbaikan: tambahkan topic di sini
+          data: dataPayload,
+          topic: topic,
         });
 
         this.logger.log(`✅ FCM sent to topic: ${topic}`);
       }
     } catch (error) {
-      // Logger yang lebih informatif
       this.logger.error(
         `❌ Failed to send FCM: ${error?.stack || error?.message || error}`,
       );
     }
   }
-
-  // ────────────────────────────────────────
-  // 🔔 NOTIFIKASI KHUSUS: BONDING → CUTTING
-  // ────────────────────────────────────────
 
   async sendBondingRejectNotification(
     batchNumber: string,
@@ -171,33 +152,25 @@ export class NotificationService {
     });
   }
 
-  // ────────────────────────────────────────
-  // 🔔 TAMBAHAN: KIRIM WHATSAPP KE USER TERTENTU
-  // ────────────────────────────────────────
-
-  /**
-   * Kirim WhatsApp ke user tertentu berdasarkan departemen (enum) dan role (enum)
-   */
   async sendWhatsAppToUsersInDepartment(
-    departmentEnum: Department, // Terima enum Department
-    rolesEnum: Role[], // Terima enum Role
+    departmentEnum: Department,
+    rolesEnum: Role[],
     message: string,
   ): Promise<void> {
     const users = await this.userService.findUsersByDepartmentAndRoles(
-      departmentEnum, // Kirim enum langsung
-      rolesEnum, // Kirim enum langsung
+      departmentEnum,
+      rolesEnum,
     );
 
     if (users.length === 0) {
       this.logger.warn(
-        `Tidak ada user ditemukan di departemen ${departmentEnum} dengan role: ${rolesEnum.join(', ')}`, // Tampilkan enum
+        `Tidak ada user ditemukan di departemen ${departmentEnum} dengan role: ${rolesEnum.join(', ')}`,
       );
       return;
     }
 
     for (const user of users) {
       try {
-        // Nomor Hp dari user entity adalah `nomorHp`
         await this.fonnteService.sendWhatsApp(user.nomorHp, message);
         this.logger.log(
           `✅ WhatsApp dikirim ke ${user.nama} (${user.nomorHp})`,
@@ -209,10 +182,6 @@ export class NotificationService {
       }
     }
   }
-
-  // ────────────────────────────────────────
-  // 🔔 NOTIFIKASI KHUSUS: CUTTING → BONDING
-  // ────────────────────────────────────────
 
   async sendReplacementUpdateNotification(
     replacementId: string,
@@ -266,10 +235,6 @@ export class NotificationService {
     });
   }
 
-  // ────────────────────────────────────────
-  // 📚 CRUD & QUERY — KOMPATIBEL UNTUK SPASI DI DEPARTMENT
-  // ────────────────────────────────────────
-
   async findAll(filters?: {
     recipientDepartment?: NotificationRecipientDepartment;
     readStatus?: boolean;
@@ -279,19 +244,15 @@ export class NotificationService {
   }): Promise<Notification[]> {
     const query = this.notificationRepository.createQueryBuilder('n');
 
-    // Filter berdasarkan department (recipientDepartments disimpan sebagai text/array -> gunakan LIKE hack untuk sqlite)
     if (filters?.recipientDepartment) {
-      const escapedDept = String(filters.recipientDepartment).replace(
-        /'/g,
-        "''",
-      ); // Escape single quote
-      query.andWhere(`(',' || n.recipientDepartments || ',') LIKE :pattern`, {
-        pattern: `%,${escapedDept},%`,
+      // Karena recipientDepartments disimpan sebagai JSON string, gunakan JSON operator
+      query.andWhere("n.recipient_departments::jsonb ? :dept", {
+        dept: filters.recipientDepartment,
       });
     }
 
     if (filters?.readStatus !== undefined) {
-      query.andWhere('n.readStatus = :readStatus', {
+      query.andWhere('n.read_status = :readStatus', {
         readStatus: filters.readStatus,
       });
     }
@@ -301,19 +262,19 @@ export class NotificationService {
     }
 
     if (filters?.relatedEntityType) {
-      query.andWhere('n.relatedEntityType = :relatedEntityType', {
+      query.andWhere('n.related_entity_type = :relatedEntityType', {
         relatedEntityType: filters.relatedEntityType,
       });
     }
 
     if (filters?.relatedEntityId) {
-      query.andWhere('n.relatedEntityId = :relatedEntityId', {
+      query.andWhere('n.related_entity_id = :relatedEntityId', {
         relatedEntityId: filters.relatedEntityId,
       });
     }
 
     query.orderBy('n.timestamp', 'DESC');
-    return query.getMany();
+    return await query.getMany();
   }
 
   async findOne(id: string): Promise<Notification> {
@@ -334,13 +295,13 @@ export class NotificationService {
   ): Promise<Notification> {
     const notification = await this.findOne(id);
     Object.assign(notification, updateDto);
-    return this.notificationRepository.save(notification);
+    return await this.notificationRepository.save(notification);
   }
 
   async markAsRead(id: string): Promise<Notification> {
     const notification = await this.findOne(id);
     notification.readStatus = true;
-    return this.notificationRepository.save(notification);
+    return await this.notificationRepository.save(notification);
   }
 
   async markMultipleAsRead(ids: string[]): Promise<void> {
@@ -357,12 +318,11 @@ export class NotificationService {
       .createQueryBuilder()
       .update(Notification)
       .set({ readStatus: true })
-      .where('readStatus = :readStatus', { readStatus: false });
+      .where('read_status = :readStatus', { readStatus: false });
 
     if (recipientDepartment) {
-      const escapedDept = String(recipientDepartment).replace(/'/g, "''");
-      query.andWhere(`(',' || recipientDepartments || ',') LIKE :pattern`, {
-        pattern: `%,${escapedDept},%`,
+      query.andWhere("recipient_departments::jsonb ? :dept", {
+        dept: recipientDepartment,
       });
     }
 
@@ -379,15 +339,14 @@ export class NotificationService {
   ): Promise<number> {
     const query = this.notificationRepository
       .createQueryBuilder('n')
-      .where('n.readStatus = :readStatus', { readStatus: false });
+      .where('n.read_status = :readStatus', { readStatus: false });
 
     if (recipientDepartment) {
-      const escapedDept = String(recipientDepartment).replace(/'/g, "''");
-      query.andWhere(`(',' || n.recipientDepartments || ',') LIKE :pattern`, {
-        pattern: `%,${escapedDept},%`,
+      query.andWhere("n.recipient_departments::jsonb ? :dept", {
+        dept: recipientDepartment,
       });
     }
 
-    return query.getCount();
+    return await query.getCount();
   }
 }

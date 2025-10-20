@@ -3,12 +3,12 @@ import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
 
 @Entity('customers')
 export class Customer {
-  @PrimaryGeneratedColumn('increment', { name: 'customer_id' })
+  @PrimaryGeneratedColumn({ name: 'customer_id' })
   customerId: number;
 
-  @Column({ name: 'customer_name' })
+  @Column({ name: 'customer_name', type: 'varchar', length: 255 })
   customerName: string;
 
-  @Column({ name: 'customer_code', unique: true })
+  @Column({ name: 'customer_code', type: 'varchar', length: 100, unique: true })
   customerCode: string;
 }

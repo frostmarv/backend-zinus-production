@@ -21,24 +21,22 @@ export class CustomersService {
 
   async findOne(id: number): Promise<Customer> {
     const customer = await this.customerRepo.findOne({
-      where: { customerId: id }, // 👈 gunakan property name, bukan nama kolom
+      where: { customerId: id },
     });
-    if (!customer)
+    if (!customer) {
       throw new NotFoundException(`Customer dengan ID "${id}" tidak ditemukan`);
+    }
     return customer;
   }
 
-  // 🔹 BARU: Cari berdasarkan kode
   async findByCode(customerCode: string): Promise<Customer | null> {
     return this.customerRepo.findOne({ where: { customerCode } });
   }
 
-  // 🔹 BARU: Cari berdasarkan nama
   async findByName(customerName: string): Promise<Customer | null> {
     return this.customerRepo.findOne({ where: { customerName } });
   }
 
-  // 🔹 BARU: Buat customer baru
   async create(customerName: string, customerCode: string): Promise<Customer> {
     const existing = await this.findByCode(customerCode);
     if (existing) {
@@ -47,6 +45,6 @@ export class CustomersService {
       );
     }
     const customer = this.customerRepo.create({ customerName, customerCode });
-    return this.customerRepo.save(customer);
+    return await this.customerRepo.save(customer);
   }
 }

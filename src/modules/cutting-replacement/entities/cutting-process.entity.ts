@@ -1,3 +1,4 @@
+// src/modules/cutting/cutting-process.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -28,12 +29,12 @@ export class CuttingProcess {
   @JoinColumn({ name: 'replacement_id' })
   replacement: ReplacementProgress;
 
-  @Column({ name: 'processed_qty', type: 'int', default: 0 })
+  @Column({ name: 'processed_qty', type: 'integer', default: 0 })
   processedQty: number;
 
-  // ✅ Ganti 'enum' → 'varchar'
   @Column({
     type: 'varchar',
+    length: 20,
     default: CuttingProcessStatus.PENDING,
   })
   status: CuttingProcessStatus;
@@ -41,22 +42,21 @@ export class CuttingProcess {
   @Column({ type: 'text', nullable: true })
   remarks: string;
 
-  @Column({ name: 'operator_name', nullable: true })
+  @Column({ name: 'operator_name', type: 'varchar', length: 100, nullable: true })
   operatorName: string;
 
-  @Column({ name: 'machine_id', nullable: true })
+  @Column({ name: 'machine_id', type: 'varchar', length: 100, nullable: true })
   machineId: string;
 
-  // ✅ Ganti 'timestamp' → 'datetime'
-  @Column({ name: 'started_at', type: 'datetime', nullable: true })
+  @Column({ name: 'started_at', type: 'timestamp', nullable: true })
   startedAt: Date;
 
-  @Column({ name: 'completed_at', type: 'datetime', nullable: true })
+  @Column({ name: 'completed_at', type: 'timestamp', nullable: true })
   completedAt: Date;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

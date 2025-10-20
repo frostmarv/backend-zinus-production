@@ -12,8 +12,8 @@ import { Product } from '../../entities/product.entity';
 import { Customer } from '../../entities/customer.entity';
 import {
   CreateProductionPlanningDto,
-  UploadProductionPlanningDto, // 👈 tambahkan
-  UpdateProductionPlanningDto, // 👈 tambahkan
+  UploadProductionPlanningDto,
+  UpdateProductionPlanningDto,
 } from './dto';
 
 @Injectable()
@@ -30,17 +30,14 @@ export class ProductionPlanningService {
     private dataSource: DataSource,
   ) {}
 
-  // 🔹 BARU: Ambil data foam
   async findAllFoam() {
     return this.getPlanningByCategory('FOAM');
   }
 
-  // 🔹 BARU: Ambil data spring
   async findAllSpring() {
     return this.getPlanningByCategory('SPRING');
   }
 
-  // 🔹 BARU: Query data berdasarkan kategori
   private async getPlanningByCategory(category: string) {
     const query = `
       SELECT 
@@ -49,7 +46,7 @@ export class ProductionPlanningService {
         po.po_number AS "PO No.",
         p.item_number AS "Item Number",
         p.sku AS "SKU",
-        p.spec_length || '*' || p.spec_width || '*' || p.spec_height || p.spec_unit AS "Spec",
+        CONCAT(p.spec_length, '*', p.spec_width, '*', p.spec_height, p.spec_unit) AS "Spec",
         p.item_description AS "Item Description",
         poi.i_d AS "I/D",
         poi.l_d AS "L/D",
@@ -60,10 +57,10 @@ export class ProductionPlanningService {
         poi.week_number AS "Week",
         p.category AS "Category"
       FROM production_order_items poi
-      JOIN production_orders po ON poi.orderOrderId = po.order_id
-      JOIN customers c ON po.customerCustomerId = c.customer_id
-      JOIN products p ON poi.productProductId = p.product_id
-      WHERE p.category = ?
+      JOIN production_orders po ON poi.order_order_id = po.order_id
+      JOIN customers c ON po.customer_customer_id = c.customer_id
+      JOIN products p ON poi.product_product_id = p.product_id
+      WHERE p.category = $1
       ORDER BY po.po_number, poi.week_number
     `;
     return this.dataSource.query(query, [category]);
@@ -78,7 +75,6 @@ export class ProductionPlanningService {
     return this.formatItemResponse(item);
   }
 
-  // 🔹 BARU: Update item
   async update(id: number, dto: UpdateProductionPlanningDto) {
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
@@ -89,7 +85,6 @@ export class ProductionPlanningService {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
-    // Update item
     if (dto.orderQty !== undefined) item.plannedQty = dto.orderQty;
     if (dto.sample !== undefined) item.sampleQty = dto.sample;
     if (dto.week !== undefined) item.weekNumber = parseInt(dto.week, 10);
@@ -101,7 +96,6 @@ export class ProductionPlanningService {
     return this.findOneById(id);
   }
 
-  // 🔹 BARU: Delete item
   async delete(id: number) {
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
@@ -115,9 +109,7 @@ export class ProductionPlanningService {
     return { message: `Item with ID ${id} has been deleted` };
   }
 
-  // 🔹 Upload massal
   async upload(dto: UploadProductionPlanningDto) {
-    // 1. Cari atau buat CUSTOMER
     let customer = await this.customerRepo.findOne({
       where: { customerName: dto.shipToName },
     });
@@ -131,7 +123,6 @@ export class ProductionPlanningService {
       await this.customerRepo.save(customer);
     }
 
-    // 2. Cari atau buat PRODUCTION ORDER
     let order = await this.orderRepo.findOne({
       where: {
         poNumber: dto.poNumber,
@@ -150,13 +141,11 @@ export class ProductionPlanningService {
       await this.orderRepo.save(order);
     }
 
-    // 3. Proses semua item
     const results = [];
     const errors = [];
 
     for (const [index, itemDto] of dto.items.entries()) {
       try {
-        // a. Cari atau buat PRODUCT
         let product = await this.productRepo.findOne({
           where: { sku: itemDto.sku },
         });
@@ -175,7 +164,6 @@ export class ProductionPlanningService {
           await this.productRepo.save(product);
         }
 
-        // b. Buat PRODUCTION ORDER ITEM
         const item = this.itemRepo.create({
           order,
           product,
@@ -206,7 +194,6 @@ export class ProductionPlanningService {
     };
   }
 
-  // 🔹 Create (satu item)
   async create(dto: CreateProductionPlanningDto) {
     return this.upload({
       shipToName: dto.shipToName,

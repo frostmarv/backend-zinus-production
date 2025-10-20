@@ -1,3 +1,4 @@
+// src/entities/bonding-reject.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -30,6 +31,7 @@ export class BondingReject {
   @Column({
     name: 'batch_number',
     type: 'varchar',
+    length: 100,
     unique: true,
     nullable: true,
   })
@@ -37,43 +39,42 @@ export class BondingReject {
 
   @Column({
     name: 'timestamp',
-    type: 'datetime',
+    type: 'timestamp',
     default: () => 'CURRENT_TIMESTAMP',
   })
   timestamp: Date;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 10 })
   shift: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 10 })
   group: string;
 
-  @Column({ name: 'time_slot', type: 'varchar' })
+  @Column({ name: 'time_slot', type: 'varchar', length: 50 })
   time_slot: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 100 })
   kashift: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 100 })
   admin: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 100 })
   customer: string;
 
-  @Column({ name: 'po_number', type: 'varchar' })
+  @Column({ name: 'po_number', type: 'varchar', length: 100 })
   po_number: string;
 
-  @Column({ type: 'varchar' })
+  @Column({ type: 'varchar', length: 100 })
   sku: string;
 
-  @Column({ name: 's_code', type: 'varchar' })
+  @Column({ name: 's_code', type: 'varchar', length: 50 })
   s_code: string;
 
-  // ✅ TAMBAHKAN KOLON DESCRIPTION DI SINI
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
-  @Column({ name: 'ng_quantity', type: 'int' })
+  @Column({ name: 'ng_quantity', type: 'integer' })
   ng_quantity: number;
 
   @Column({ type: 'text' })
@@ -93,9 +94,9 @@ export class BondingReject {
   })
   status: BondingRejectStatus;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   created_at: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updated_at: Date;
 }

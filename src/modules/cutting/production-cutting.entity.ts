@@ -1,3 +1,4 @@
+// src/modules/cutting/production-cutting.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -12,25 +13,24 @@ export class ProductionCuttingRecord {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 30 })
   timestamp: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 10 })
   shift: string;
 
-  @Column({ name: 'work_group' })
+  @Column({ name: 'work_group', type: 'varchar', length: 10 })
   group: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 50 })
   time: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   machine: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 100, nullable: true })
   operator: string;
 
-  // ✅ Import entity entry yang baru
   @OneToMany(
     () => ProductionCuttingEntry,
     (entry) => entry.productionCuttingRecord,
@@ -40,6 +40,6 @@ export class ProductionCuttingRecord {
   )
   entries: ProductionCuttingEntry[];
 
-  @CreateDateColumn()
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 }

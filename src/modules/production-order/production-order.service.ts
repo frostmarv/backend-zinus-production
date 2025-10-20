@@ -15,7 +15,7 @@ export class ProductionOrderService {
     @InjectRepository(ProductionOrder)
     private orderRepo: Repository<ProductionOrder>,
     @InjectRepository(Customer)
-    private customerRepo: Repository<Customer>, // → Dipakai di service
+    private customerRepo: Repository<Customer>,
   ) {}
 
   findAll(): Promise<ProductionOrder[]> {
@@ -27,8 +27,9 @@ export class ProductionOrderService {
       where: { orderId: id },
       relations: ['customer'],
     });
-    if (!order)
+    if (!order) {
       throw new NotFoundException(`Order dengan ID "${id}" tidak ditemukan`);
+    }
     return order;
   }
 
@@ -42,14 +43,12 @@ export class ProductionOrderService {
     });
   }
 
-  // 🔹 Menerima customer ID, bukan object
   async create(
     customerId: number,
     customerPo: string,
     poNumber: string,
     orderDate?: Date,
   ): Promise<ProductionOrder> {
-    // 🔴 Cari customer di dalam service
     const customer = await this.customerRepo.findOne({
       where: { customerId },
     });
@@ -60,7 +59,6 @@ export class ProductionOrderService {
       );
     }
 
-    // Cek duplikat
     const existing = await this.findByPoAndCustomer(
       poNumber,
       customerPo,
@@ -76,7 +74,7 @@ export class ProductionOrderService {
       customer,
       orderDate: orderDate || new Date(),
     });
-    return this.orderRepo.save(order);
+    return await this.orderRepo.save(order);
   }
 
   async update(
@@ -85,7 +83,7 @@ export class ProductionOrderService {
   ): Promise<ProductionOrder> {
     const order = await this.findOne(id);
     Object.assign(order, data);
-    return this.orderRepo.save(order);
+    return await this.orderRepo.save(order);
   }
 
   async remove(id: number): Promise<void> {

@@ -77,7 +77,7 @@ export class ReplacementService {
 
     query.orderBy('rp.created_at', 'DESC');
 
-    return query.getMany();
+    return await query.getMany();
   }
 
   async findOne(id: string): Promise<ReplacementProgress> {
@@ -99,7 +99,6 @@ export class ReplacementService {
   ): Promise<ReplacementProgress> {
     const replacement = await this.findOne(id);
 
-    // Validate processedQty doesn't exceed requestedQty
     if (updateDto.processedQty !== undefined) {
       if (updateDto.processedQty > replacement.requestedQty) {
         throw new BadRequestException(
@@ -107,7 +106,6 @@ export class ReplacementService {
         );
       }
 
-      // Auto-update status based on processed quantity
       if (updateDto.processedQty === 0) {
         updateDto.status = ReplacementStatus.PENDING;
       } else if (updateDto.processedQty < replacement.requestedQty) {

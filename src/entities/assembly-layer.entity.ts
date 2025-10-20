@@ -10,16 +10,14 @@ import { Product } from './product.entity';
 
 @Entity('assembly_layers')
 export class AssemblyLayer {
-  @PrimaryGeneratedColumn('increment', { name: 'id' })
+  @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'productProductId' })
+  @Column({ name: 'product_product_id' })
   productProductId: number;
 
-  @ManyToOne(() => Product, (product) => product.productId, {
-    onDelete: 'RESTRICT',
-  })
-  @JoinColumn({ name: 'productProductId', referencedColumnName: 'productId' })
+  @ManyToOne(() => Product, { onDelete: 'RESTRICT' })
+  @JoinColumn({ name: 'product_product_id', referencedColumnName: 'productId' })
   product: Product;
 
   @Column({ name: 'second_item_number' })
@@ -37,10 +35,9 @@ export class AssemblyLayer {
   @Column({ name: 'category_layers', nullable: true })
   categoryLayers: string | null;
 
-  // 🔴 Perbaikan: Ganti type: 'timestamp' menjadi type: 'datetime'
   @Column({
     name: 'created_at',
-    type: 'datetime', // ✅ Bukan 'timestamp'
+    type: 'timestamp',
     default: () => 'CURRENT_TIMESTAMP',
   })
   createdAt: Date;

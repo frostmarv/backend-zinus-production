@@ -1,3 +1,4 @@
+// src/entities/notification.entity.ts
 import {
   Entity,
   PrimaryGeneratedColumn,
@@ -6,7 +7,6 @@ import {
   UpdateDateColumn,
 } from 'typeorm';
 
-// Enum hanya untuk Cutting & Bonding
 export enum NotificationRecipientDepartment {
   CUTTING = 'Cutting',
   BONDING = 'Bonding',
@@ -24,7 +24,7 @@ export class Notification {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 
-  @Column()
+  @Column({ type: 'varchar', length: 255 })
   title: string;
 
   @Column({ type: 'text' })
@@ -32,9 +32,13 @@ export class Notification {
 
   @Column({
     name: 'recipient_departments',
-    type: 'simple-array', // Simpan sebagai string: "Cutting,Bonding"
+    type: 'text', // Gunakan text dan simpan sebagai JSON string
+    transformer: {
+      to: (value: NotificationRecipientDepartment[]) => JSON.stringify(value),
+      from: (value: string) => JSON.parse(value),
+    },
   })
-  recipientDepartments: NotificationRecipientDepartment[]; // Hanya Cutting & Bonding
+  recipientDepartments: NotificationRecipientDepartment[];
 
   @Column({
     type: 'varchar',
@@ -43,24 +47,24 @@ export class Notification {
   })
   type: NotificationType;
 
-  @Column({ nullable: true })
+  @Column({ type: 'varchar', length: 500, nullable: true })
   link: string;
 
-  @Column({ name: 'read_status', default: false })
+  @Column({ name: 'read_status', type: 'boolean', default: false })
   readStatus: boolean;
 
-  @Column({ name: 'related_entity_type', nullable: true })
+  @Column({ name: 'related_entity_type', type: 'varchar', length: 100, nullable: true })
   relatedEntityType: string;
 
-  @Column({ name: 'related_entity_id', nullable: true })
+  @Column({ name: 'related_entity_id', type: 'varchar', length: 100, nullable: true })
   relatedEntityId: string;
 
-  @Column({ type: 'datetime', default: () => 'CURRENT_TIMESTAMP' })
+  @Column({ name: 'timestamp', type: 'timestamp', default: () => 'CURRENT_TIMESTAMP' })
   timestamp: Date;
 
-  @CreateDateColumn({ name: 'created_at' })
+  @CreateDateColumn({ name: 'created_at', type: 'timestamp' })
   createdAt: Date;
 
-  @UpdateDateColumn({ name: 'updated_at' })
+  @UpdateDateColumn({ name: 'updated_at', type: 'timestamp' })
   updatedAt: Date;
 }

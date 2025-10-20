@@ -1,4 +1,5 @@
-import { Entity, ViewColumn, ViewEntity } from 'typeorm';
+// src/entities/production-planning-view.entity.ts
+import { ViewColumn, ViewEntity } from 'typeorm';
 
 @ViewEntity({ name: 'v_production_planning' })
 export class ProductionPlanningView {
@@ -24,7 +25,7 @@ export class ProductionPlanningView {
   item_description: string;
 
   @ViewColumn({ name: 'I/D' })
-  i_d: string; // atau Date jika Anda parse sebagai DATE
+  i_d: string;
 
   @ViewColumn({ name: 'L/D' })
   l_d: string;
