@@ -61,6 +61,7 @@ export class WorkableBondingService {
         item.net_qty = item.net_qty || 0;
         item.bonding_qty = item.bonding_qty || 0;
         item.foaming_date = item.foaming_date || null;
+        // Sudah boolean dari DB, tapi tetap aman
         item.foaming_date_completed = Boolean(item.foaming_date_completed);
         item.is_hole = Boolean(item.is_hole);
         item.quantity_hole = item.quantity_hole || 0;
@@ -455,8 +456,8 @@ export class WorkableBondingService {
         COALESCE(ca.cutting_qty, 0) AS "cutting_qty",
         COALESCE(ca.net_qty, 0) AS "net_qty",
         COALESCE(ca.foaming_date, NULL) AS "foaming_date",
-        COALESCE(ca.foaming_date_completed, 0) AS "foaming_date_completed",
-        COALESCE(ca.is_hole, 0) AS "is_hole",
+        COALESCE(ca.foaming_date_completed, FALSE) AS "foaming_date_completed",
+        COALESCE(ca.is_hole, FALSE) AS "is_hole",
         COALESCE(ca.quantity_hole, 0) AS "quantity_hole",
         COALESCE(ca.quantity_hole_remain, 0) AS "quantity_hole_remain",
         COALESCE(bs.bonding_qty, 0) AS "bonding_qty"
@@ -473,8 +474,8 @@ export class WorkableBondingService {
           SUM(e.quantity_produksi) AS "cutting_qty",
           SUM(e.quantity_produksi) - COALESCE(ng.net_ng_qty, 0) AS "net_qty",
           MAX(e.foaming_date) AS "foaming_date",
-          MAX(CASE WHEN e.foaming_date_completed = 1 THEN 1 ELSE 0 END) AS "foaming_date_completed",
-          MAX(CASE WHEN e.is_hole = 1 THEN 1 ELSE 0 END) AS "is_hole",
+          BOOL_OR(e.foaming_date_completed) AS "foaming_date_completed",
+          BOOL_OR(e.is_hole) AS "is_hole",
           SUM(e.quantity_hole) AS "quantity_hole",
           SUM(e.quantity_hole_remain) AS "quantity_hole_remain"
         FROM production_cutting_entries e
@@ -499,7 +500,6 @@ export class WorkableBondingService {
             WHERE br.status != 'CANCELLED' AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
             GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
           ) rp ON br.sku = rp.sku AND br.s_code = rp.s_code
-          -- ✅ REMOVED: GROUP BY br.sku, br.s_code
         ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
         WHERE e.week IS NOT NULL
         GROUP BY e.sku, e.week, COALESCE(e.s_code, 'MAIN'), ng.net_ng_qty
