@@ -46,7 +46,7 @@ export class ProductionPlanningService {
         po.po_number AS "PO No.",
         p.item_number AS "Item Number",
         p.sku AS "SKU",
-        CONCAT(p.spec_length, '*', p.spec_width, '*', p.spec_height, p.spec_unit) AS "Spec",
+        p.spec AS "Spec",
         p.item_description AS "Item Description",
         poi.i_d AS "I/D",
         poi.l_d AS "L/D",
@@ -75,6 +75,23 @@ export class ProductionPlanningService {
     return this.formatItemResponse(item);
   }
 
+  // 🔽 Gunakan parseInteger untuk semua field numerik
+  private parseInteger(value: string | number | undefined, fieldName: string): number {
+    if (value === undefined || value === null) {
+      return 0;
+    }
+    // Jika number, langsung return
+    if (typeof value === 'number') {
+      return value;
+    }
+    // Jika string, parse
+    const num = parseInt(value, 10);
+    if (isNaN(num)) {
+      throw new BadRequestException(`Nilai "${fieldName}" harus berupa angka, ditemukan: "${value}"`);
+    }
+    return num;
+  }
+
   async update(id: number, dto: UpdateProductionPlanningDto) {
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
@@ -85,9 +102,11 @@ export class ProductionPlanningService {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
-    if (dto.orderQty !== undefined) item.plannedQty = dto.orderQty;
-    if (dto.sample !== undefined) item.sampleQty = dto.sample;
-    if (dto.week !== undefined) item.weekNumber = parseInt(dto.week, 10);
+    // ✅ Parsing aman untuk semua field numerik
+    if (dto.orderQty !== undefined) item.plannedQty = this.parseInteger(dto.orderQty, 'orderQty');
+    if (dto.sample !== undefined) item.sampleQty = this.parseInteger(dto.sample, 'sample');
+    if (dto.week !== undefined) item.weekNumber = this.parseInteger(dto.week, 'week');
+
     if (dto.iD !== undefined) item.iD = dto.iD ? new Date(dto.iD) : null;
     if (dto.lD !== undefined) item.lD = dto.lD ? new Date(dto.lD) : null;
     if (dto.sD !== undefined) item.sD = dto.sD ? new Date(dto.sD) : null;
@@ -107,6 +126,34 @@ export class ProductionPlanningService {
 
     await this.itemRepo.remove(item);
     return { message: `Item with ID ${id} has been deleted` };
+  }
+
+  // 🔽 parseSpec tetap digunakan di tempat lain jika perlu validasi
+  private parseSpec(spec: string): {
+    specLength: number;
+    specWidth: number;
+    specHeight: number;
+    specUnit: string;
+  } {
+    if (!spec?.trim()) {
+      throw new BadRequestException('Field "spec" tidak boleh kosong');
+    }
+
+    const regex = /^(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*([a-zA-Z]*)$/;
+    const match = spec.trim().match(regex);
+
+    if (!match) {
+      throw new BadRequestException(
+        `Format "spec" tidak valid: "${spec}". Gunakan format: "Panjang*Lebar*Tinggi[Satuan]", contoh: "75*54*8IN"`,
+      );
+    }
+
+    return {
+      specLength: parseFloat(match[1]),
+      specWidth: parseFloat(match[2]),
+      specHeight: parseFloat(match[3]),
+      specUnit: match[4] || 'IN',
+    };
   }
 
   async upload(dto: UploadProductionPlanningDto) {
@@ -146,6 +193,9 @@ export class ProductionPlanningService {
 
     for (const [index, itemDto] of dto.items.entries()) {
       try {
+        // ✅ Validasi format spec sebelum menyimpan
+        this.parseSpec(itemDto.spec); // hanya untuk validasi, tidak simpan hasilnya
+
         let product = await this.productRepo.findOne({
           where: { sku: itemDto.sku },
         });
@@ -155,14 +205,15 @@ export class ProductionPlanningService {
             itemNumber: itemDto.itemNumber,
             sku: itemDto.sku,
             category: itemDto.category.trim().toUpperCase(),
-            specLength: itemDto.specLength,
-            specWidth: itemDto.specWidth,
-            specHeight: itemDto.specHeight,
-            specUnit: itemDto.specUnit,
+            spec: itemDto.spec, // ✅ simpan langsung sebagai string
             itemDescription: itemDto.itemDescription,
           });
           await this.productRepo.save(product);
         }
+
+        const plannedQty = this.parseInteger(itemDto.orderQty, 'orderQty');
+        const sampleQty = this.parseInteger(itemDto.sample, 'sample');
+        const weekNumber = this.parseInteger(itemDto.week, 'week');
 
         const item = this.itemRepo.create({
           order,
@@ -170,18 +221,21 @@ export class ProductionPlanningService {
           iD: itemDto.iD ? new Date(itemDto.iD) : null,
           lD: itemDto.lD ? new Date(itemDto.lD) : null,
           sD: itemDto.sD ? new Date(itemDto.sD) : null,
-          plannedQty: itemDto.orderQty,
-          sampleQty: itemDto.sample || 0,
-          weekNumber: parseInt(itemDto.week, 10) || 1,
+          plannedQty,
+          sampleQty,
+          weekNumber,
         });
 
         const savedItem = await this.itemRepo.save(item);
         results.push(this.formatItemResponse(savedItem));
       } catch (error) {
+        const errorMessage = error instanceof BadRequestException
+          ? error.message
+          : error.message || 'Gagal menyimpan item';
         errors.push({
           index: index + 1,
           item: itemDto.sku,
-          error: error.message || 'Gagal menyimpan item',
+          error: errorMessage,
         });
       }
     }
@@ -204,16 +258,13 @@ export class ProductionPlanningService {
           itemNumber: dto.itemNumber,
           sku: dto.sku,
           category: dto.category,
-          specLength: dto.specLength,
-          specWidth: dto.specWidth,
-          specHeight: dto.specHeight,
-          specUnit: dto.specUnit,
+          spec: dto.spec,
           itemDescription: dto.itemDescription,
           iD: dto.iD,
           lD: dto.lD,
           sD: dto.sD,
           orderQty: dto.orderQty,
-          sample: dto.sample,
+          sample: dto.sample || '0',
           week: dto.week,
         },
       ],
@@ -230,20 +281,13 @@ export class ProductionPlanningService {
   }
 
   private formatItemResponse(item: ProductionOrderItem) {
-    const spec =
-      item.product.specLength &&
-      item.product.specWidth &&
-      item.product.specHeight
-        ? `${item.product.specLength}*${item.product.specWidth}*${item.product.specHeight}${item.product.specUnit}`
-        : '';
-
     return {
       'Ship to Name': item.order.customer.customerName,
       'Cust. PO': item.order.customerPo,
       'PO No.': item.order.poNumber,
       'Item Number': item.product.itemNumber,
       SKU: item.product.sku,
-      Spec: spec,
+      Spec: item.product.spec,
       'Item Description': item.product.itemDescription,
       'I/D': item.iD,
       'L/D': item.lD,

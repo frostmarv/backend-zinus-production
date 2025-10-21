@@ -15,17 +15,8 @@ export class Product {
   @Column({ type: 'varchar', length: 50 })
   category: string; // 'FOAM' | 'SPRING'
 
-  @Column({ name: 'spec_length', type: 'real' })
-  specLength: number;
-
-  @Column({ name: 'spec_width', type: 'real' })
-  specWidth: number;
-
-  @Column({ name: 'spec_height', type: 'real' })
-  specHeight: number;
-
-  @Column({ name: 'spec_unit', type: 'varchar', length: 20 })
-  specUnit: string;
+  @Column({ name: 'spec', type: 'varchar', length: 200 }) // ✅ satu kolom
+  spec: string; // contoh: "75*54*8IN"
 
   @Column({ name: 'item_description', type: 'text' })
   itemDescription: string;

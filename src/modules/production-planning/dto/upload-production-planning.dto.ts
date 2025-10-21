@@ -1,10 +1,9 @@
-// upload-production-planning.dto.ts
+// src/modules/production-planning/dto/upload-production-planning.dto.ts
 import { Type } from 'class-transformer';
 import {
   IsArray,
   IsDateString,
   IsNotEmpty,
-  IsNumber,
   IsOptional,
   IsString,
   ValidateNested,
@@ -14,17 +13,14 @@ class ProductionPlanningItemDto {
   @IsString() @IsNotEmpty() itemNumber: string;
   @IsString() @IsNotEmpty() sku: string;
   @IsString() @IsNotEmpty() category: string;
-  @IsNumber() @Type(() => Number) specLength: number;
-  @IsNumber() @Type(() => Number) specWidth: number;
-  @IsNumber() @Type(() => Number) specHeight: number;
-  @IsString() @IsNotEmpty() specUnit: string;
+  @IsString() @IsNotEmpty() spec: string; // ✅ satu field
   @IsString() @IsNotEmpty() itemDescription: string;
 
   @IsString() @IsOptional() iD?: string;
   @IsString() @IsOptional() lD?: string;
   @IsString() @IsOptional() sD?: string;
-  @IsNumber() @Type(() => Number) @IsNotEmpty() orderQty: number;
-  @IsNumber() @Type(() => Number) @IsOptional() sample?: number;
+  @IsString() @IsNotEmpty() orderQty: string;
+  @IsString() @IsOptional() sample?: string;
   @IsString() @IsNotEmpty() week: string;
 }
 

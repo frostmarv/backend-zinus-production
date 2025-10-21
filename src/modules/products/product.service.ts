@@ -33,14 +33,12 @@ export class ProductService {
     return this.productRepo.findOne({ where: { sku } });
   }
 
+  // ✅ Ubah DTO input untuk create
   async create(createDto: {
     itemNumber: string;
     sku: string;
     category: string;
-    specLength: number;
-    specWidth: number;
-    specHeight: number;
-    specUnit: string;
+    spec: string; // ✅ satu field
     itemDescription: string;
   }): Promise<Product> {
     const existing = await this.findBySku(createDto.sku);
