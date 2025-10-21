@@ -1,3 +1,5 @@
+// src/modules/production-planning/production-planning.controller.ts
+
 import {
   Controller,
   Get,
@@ -72,7 +74,18 @@ export class ProductionPlanningController {
       const workbook = XLSX.read(file.buffer, { type: 'buffer' });
       const sheetName = workbook.SheetNames[0];
       const worksheet = workbook.Sheets[sheetName];
-      data = XLSX.utils.sheet_to_json(worksheet);
+      // ✅ Baca data mentah dan bersihkan header
+      const rawData = XLSX.utils.sheet_to_json(worksheet, { raw: true, defval: '' });
+
+      data = rawData.map((row: any) => {
+        const cleaned: any = {};
+        Object.keys(row).forEach((key) => {
+          // ✅ Bersihkan spasi di header
+          const cleanKey = key.trim().replace(/\s+/g, ' ');
+          cleaned[cleanKey] = row[key];
+        });
+        return cleaned;
+      });
     } else if (
       file.mimetype === 'text/csv' ||
       file.originalname.endsWith('.csv')
@@ -94,48 +107,79 @@ export class ProductionPlanningController {
       );
     }
 
+    // Helper: Parse number dari string (misalnya "1,560" → 1560)
+    const parseNumber = (value: any): number => {
+      if (value === null || value === undefined || value === '') return 0;
+      const cleaned = String(value).replace(/[^0-9.-]/g, '');
+      const num = Number(cleaned);
+      return isNaN(num) ? 0 : num;
+    };
+
+    // Helper: Parse date dari string
+    const parseDate = (value: any): Date | null => {
+      if (!value) return null;
+      const date = new Date(value);
+      return isNaN(date.getTime()) ? null : date;
+    };
+
     // Group data berdasarkan PO (shipToName, customerPO, poNumber)
     const grouped = data.reduce(
       (acc, row) => {
-        const key = `${row.shipToName}-${row.customerPO}-${row.poNumber}`;
+        // ✅ Mapping field dari header Excel ke DTO (dengan header yang sudah dibersihkan)
+        const shipToName = row['shipToName'] || row['Ship to Name'];
+        const customerPO = row['customerPO'] || row['Cust. PO'];
+        const poNumber = row['poNumber'] || row['PO No.'];
+        const itemNumber = row['itemNumber'] || row['Item Number'];
+        const sku = row['sku'] || row['SKU'];
+        const spec = row['spec'] || row['Spec'];
+        const itemDescription = row['itemDescription'] || row['Item Description'];
+        const iD = row['iD'] || row['I/D'];
+        const lD = row['lD'] || row['L/D'];
+        const sD = row['sD'] || row['S/D'];
+        const orderQty = row['orderQty'] || row['Order QTY'] || row['Order Qty'] || row['Qty'];
+        const sample = row['sample'] || row['Sample'];
+        const week = row['week'] || row['Week'];
+        const category = row['category'] || row['Category'];
+
+        // Validasi wajib
+        if (!shipToName) throw new BadRequestException('Kolom "shipToName" wajib diisi.');
+        if (!customerPO) throw new BadRequestException('Kolom "customerPO" wajib diisi.');
+        if (!poNumber) throw new BadRequestException('Kolom "poNumber" wajib diisi.');
+        if (!itemNumber) throw new BadRequestException('Kolom "itemNumber" wajib diisi.');
+        if (!sku) throw new BadRequestException('Kolom "sku" wajib diisi.');
+        if (!spec) throw new BadRequestException('Kolom "spec" wajib diisi.');
+
+        const key = `${shipToName}-${customerPO}-${poNumber}`;
         if (!acc[key]) {
           acc[key] = {
-            shipToName: row.shipToName,
-            customerPO: row.customerPO,
-            poNumber: row.poNumber,
+            shipToName,
+            customerPO,
+            poNumber,
             orderDate: row.orderDate ? new Date(row.orderDate) : undefined,
             items: [],
           };
         }
 
-        // ✅ Ambil langsung kolom `spec` dari file Excel/CSV
-        const spec = row.spec?.toString()?.trim();
-        if (!spec) {
-          throw new BadRequestException(
-            `Item dengan SKU "${row.sku}" harus memiliki kolom "spec" yang valid.`,
-          );
-        }
-
-        // ✅ Validasi format spec sebelum kirim ke service
+        // Validasi format spec
         const specRegex = /^(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*([a-zA-Z]*)$/;
-        if (!specRegex.test(spec)) {
+        if (!specRegex.test(spec?.toString()?.trim())) {
           throw new BadRequestException(
             `Format "spec" tidak valid: "${spec}". Gunakan format: "Panjang*Lebar*Tinggi[Satuan]", contoh: "75*54*8IN"`,
           );
         }
 
         acc[key].items.push({
-          itemNumber: row.itemNumber,
-          sku: row.sku,
-          category: row.category,
-          spec, // ✅ kirim langsung sebagai string
-          itemDescription: row.itemDescription,
-          orderQty: row.orderQty,
-          sample: row.sample || '0',
-          week: row.week,
-          iD: row.iD,
-          lD: row.lD,
-          sD: row.sD,
+          itemNumber,
+          sku,
+          category: category?.toString()?.trim() || 'FOAM',
+          spec: spec.toString().trim(),
+          itemDescription: itemDescription?.toString()?.trim() || '',
+          orderQty: parseNumber(orderQty),
+          sample: parseNumber(sample),
+          week: parseNumber(week),
+          iD: parseDate(iD),
+          lD: parseDate(lD),
+          sD: parseDate(sD),
         });
         return acc;
       },
