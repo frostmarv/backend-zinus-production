@@ -1,4 +1,3 @@
-// src/modules/production-planning/production-planning.controller.ts
 import {
   Controller,
   Get,
@@ -29,13 +28,11 @@ export class ProductionPlanningController {
 
   @Get('foam')
   async getFoamPlanning() {
-    // 🔴 Panggil service: pastikan method findAllFoam() ada di service
     return this.planningService.findAllFoam();
   }
 
   @Get('spring')
   async getSpringPlanning() {
-    // 🔴 Panggil service: pastikan method findAllSpring() ada di service
     return this.planningService.findAllSpring();
   }
 
@@ -65,7 +62,7 @@ export class ProductionPlanningController {
       throw new BadRequestException('File tidak ditemukan');
     }
 
-    let data: any[] = []; // ✅ Perbaikan: tambahkan nama variabel
+    let data: any[] = [];
 
     if (
       file.mimetype ===
@@ -110,21 +107,35 @@ export class ProductionPlanningController {
             items: [],
           };
         }
+
+        // ✅ Ambil langsung kolom `spec` dari file Excel/CSV
+        const spec = row.spec?.toString()?.trim();
+        if (!spec) {
+          throw new BadRequestException(
+            `Item dengan SKU "${row.sku}" harus memiliki kolom "spec" yang valid.`,
+          );
+        }
+
+        // ✅ Validasi format spec sebelum kirim ke service
+        const specRegex = /^(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*\*\s*(\d+\.?\d*)\s*([a-zA-Z]*)$/;
+        if (!specRegex.test(spec)) {
+          throw new BadRequestException(
+            `Format "spec" tidak valid: "${spec}". Gunakan format: "Panjang*Lebar*Tinggi[Satuan]", contoh: "75*54*8IN"`,
+          );
+        }
+
         acc[key].items.push({
           itemNumber: row.itemNumber,
           sku: row.sku,
           category: row.category,
-          specLength: parseFloat(row.specLength),
-          specWidth: parseFloat(row.specWidth),
-          specHeight: parseFloat(row.specHeight),
-          specUnit: row.specUnit,
+          spec, // ✅ kirim langsung sebagai string
           itemDescription: row.itemDescription,
-          orderQty: parseInt(row.orderQty, 10),
-          sample: parseInt(row.sample, 10) || 0,
+          orderQty: row.orderQty,
+          sample: row.sample || '0',
           week: row.week,
-          iD: row.iD ? new Date(row.iD) : null,
-          lD: row.lD ? new Date(row.lD) : null,
-          sD: row.sD ? new Date(row.sD) : null,
+          iD: row.iD,
+          lD: row.lD,
+          sD: row.sD,
         });
         return acc;
       },
@@ -150,13 +161,11 @@ export class ProductionPlanningController {
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateProductionPlanningDto,
   ) {
-    // 🔴 Panggil service: pastikan method update() ada di service
     return this.planningService.update(id, dto);
   }
 
   @Delete(':id')
   async delete(@Param('id', ParseIntPipe) id: number) {
-    // 🔴 Panggil service: pastikan method delete() ada di service
     return this.planningService.delete(id);
   }
 }

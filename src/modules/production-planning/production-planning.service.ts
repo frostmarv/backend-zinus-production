@@ -40,7 +40,7 @@ export class ProductionPlanningService {
   private async getPlanningByCategory(category: string) {
     const query = `
       SELECT 
-        poi.item_id AS "id",  -- ✅ TAMBAHKAN ID DI SINI
+        poi.item_id AS "id",
         c.customer_name AS "Ship to Name",
         po.customer_po AS "Cust. PO",
         po.po_number AS "PO No.",
@@ -112,16 +112,54 @@ export class ProductionPlanningService {
   }
 
   async delete(id: number) {
+    // Ambil item lengkap dengan relasi ke order dan product
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
+      relations: ['order', 'product'],
     });
 
     if (!item) {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
+    const { order, product } = item;
+    const orderId = order.orderId;
+    const productId = product.productId;
+
+    // 1. Hapus item planning
     await this.itemRepo.remove(item);
-    return { message: `Item with ID ${id} has been deleted` };
+
+    // 2. Hapus order jika tidak ada item lain
+    const remainingItemsInOrder = await this.itemRepo.count({
+      where: { order: { orderId } },
+    });
+    let orderDeleted = false;
+    if (remainingItemsInOrder === 0) {
+      await this.orderRepo.delete(orderId);
+      orderDeleted = true;
+    }
+
+    // 3. Hapus product jika tidak dipakai di item lain
+    const productUsageCount = await this.itemRepo.count({
+      where: { product: { productId } },
+    });
+    let productDeleted = false;
+    if (productUsageCount === 0) {
+      await this.productRepo.delete(productId);
+      productDeleted = true;
+    }
+
+    // ❌ Customer TIDAK PERNAH dihapus
+
+    return {
+      message: `Item with ID ${id} has been deleted`,
+      details: {
+        itemDeleted: true,
+        orderDeleted,
+        productDeleted,
+        customerDeleted: false,
+      },
+    };
   }
 
   private parseSpec(spec: string): {
@@ -276,7 +314,7 @@ export class ProductionPlanningService {
 
   private formatItemResponse(item: ProductionOrderItem) {
     return {
-      id: item.itemId, // ✅ TAMBAHKAN ID DI SINI JUGA
+      id: item.itemId,
       'Ship to Name': item.order.customer.customerName,
       'Cust. PO': item.order.customerPo,
       'PO No.': item.order.poNumber,
