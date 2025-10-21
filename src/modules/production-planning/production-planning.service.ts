@@ -1,4 +1,3 @@
-// src/modules/production-planning/production-planning.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -41,6 +40,7 @@ export class ProductionPlanningService {
   private async getPlanningByCategory(category: string) {
     const query = `
       SELECT 
+        poi.item_id AS "id",  -- ✅ TAMBAHKAN ID DI SINI
         c.customer_name AS "Ship to Name",
         po.customer_po AS "Cust. PO",
         po.po_number AS "PO No.",
@@ -75,16 +75,13 @@ export class ProductionPlanningService {
     return this.formatItemResponse(item);
   }
 
-  // 🔽 Gunakan parseInteger untuk semua field numerik
   private parseInteger(value: string | number | undefined, fieldName: string): number {
     if (value === undefined || value === null) {
       return 0;
     }
-    // Jika number, langsung return
     if (typeof value === 'number') {
       return value;
     }
-    // Jika string, parse
     const num = parseInt(value, 10);
     if (isNaN(num)) {
       throw new BadRequestException(`Nilai "${fieldName}" harus berupa angka, ditemukan: "${value}"`);
@@ -102,7 +99,6 @@ export class ProductionPlanningService {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
-    // ✅ Parsing aman untuk semua field numerik
     if (dto.orderQty !== undefined) item.plannedQty = this.parseInteger(dto.orderQty, 'orderQty');
     if (dto.sample !== undefined) item.sampleQty = this.parseInteger(dto.sample, 'sample');
     if (dto.week !== undefined) item.weekNumber = this.parseInteger(dto.week, 'week');
@@ -128,7 +124,6 @@ export class ProductionPlanningService {
     return { message: `Item with ID ${id} has been deleted` };
   }
 
-  // 🔽 parseSpec tetap digunakan di tempat lain jika perlu validasi
   private parseSpec(spec: string): {
     specLength: number;
     specWidth: number;
@@ -193,8 +188,7 @@ export class ProductionPlanningService {
 
     for (const [index, itemDto] of dto.items.entries()) {
       try {
-        // ✅ Validasi format spec sebelum menyimpan
-        this.parseSpec(itemDto.spec); // hanya untuk validasi, tidak simpan hasilnya
+        this.parseSpec(itemDto.spec);
 
         let product = await this.productRepo.findOne({
           where: { sku: itemDto.sku },
@@ -205,7 +199,7 @@ export class ProductionPlanningService {
             itemNumber: itemDto.itemNumber,
             sku: itemDto.sku,
             category: itemDto.category.trim().toUpperCase(),
-            spec: itemDto.spec, // ✅ simpan langsung sebagai string
+            spec: itemDto.spec,
             itemDescription: itemDto.itemDescription,
           });
           await this.productRepo.save(product);
@@ -282,6 +276,7 @@ export class ProductionPlanningService {
 
   private formatItemResponse(item: ProductionOrderItem) {
     return {
+      id: item.itemId, // ✅ TAMBAHKAN ID DI SINI JUGA
       'Ship to Name': item.order.customer.customerName,
       'Cust. PO': item.order.customerPo,
       'PO No.': item.order.poNumber,
