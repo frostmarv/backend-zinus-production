@@ -1,5 +1,5 @@
-// src/entities/product.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column } from 'typeorm';
+import { Entity, PrimaryGeneratedColumn, Column, OneToMany } from 'typeorm';
+import { AssemblyLayer } from './assembly-layer.entity';
 
 @Entity('products')
 export class Product {
@@ -20,4 +20,10 @@ export class Product {
 
   @Column({ name: 'item_description', type: 'text' })
   itemDescription: string;
+
+  // 🔹 Relasi balik ke AssemblyLayer
+  @OneToMany(() => AssemblyLayer, (layer) => layer.product, {
+    cascade: true,
+  })
+  assemblyLayers?: AssemblyLayer[];
 }

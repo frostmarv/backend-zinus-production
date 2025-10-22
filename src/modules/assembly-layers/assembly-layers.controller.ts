@@ -14,12 +14,12 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import * as XLSX from 'xlsx';
-import csvParser from 'csv-parser'; // 🔴 Perbaikan: default import
+import csvParser from 'csv-parser';
 import { Readable } from 'stream';
 import { AssemblyLayersService } from './assembly-layers.service';
 import { CreateAssemblyLayerDto } from './dto/create-assembly-layer.dto';
 import { UpdateAssemblyLayerDto } from './dto/update-assembly-layer.dto';
-import { UploadAssemblyLayersDto } from './dto/upload-assembly-layer.dto'; // 🔴 Perbaikan: path file
+import { UploadAssemblyLayersDto } from './dto/upload-assembly-layer.dto';
 
 @Controller('assembly-layers')
 export class AssemblyLayersController {
