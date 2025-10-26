@@ -1,4 +1,3 @@
-// src/modules/customers/customers.service.ts
 import {
   Injectable,
   NotFoundException,
@@ -7,9 +6,12 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Customer } from '../../entities/customer.entity';
+import { CreateCustomerDto } from './dto/create-customer.dto';
+import { UpdateCustomerDto } from './dto/update-customer.dto';
+import { UploadCustomersDto } from './dto/upload-customer.dto';
 
 @Injectable()
-export class CustomersService {
+export class CustomerService {
   constructor(
     @InjectRepository(Customer)
     private customerRepo: Repository<Customer>,
@@ -37,14 +39,64 @@ export class CustomersService {
     return this.customerRepo.findOne({ where: { customerName } });
   }
 
-  async create(customerName: string, customerCode: string): Promise<Customer> {
-    const existing = await this.findByCode(customerCode);
+  async create(createDto: CreateCustomerDto): Promise<Customer> {
+    const existing = await this.findByCode(createDto.customerCode);
     if (existing) {
       throw new BadRequestException(
-        `Customer dengan kode "${customerCode}" sudah ada`,
+        `Customer dengan kode "${createDto.customerCode}" sudah ada`,
       );
     }
-    const customer = this.customerRepo.create({ customerName, customerCode });
-    return await this.customerRepo.save(customer);
+    const customer = this.customerRepo.create(createDto);
+    return this.customerRepo.save(customer);
+  }
+
+  async update(id: number, updateDto: UpdateCustomerDto): Promise<Customer> {
+    const customer = await this.findOne(id);
+
+    // Cek duplikasi customerCode jika diubah
+    if (updateDto.customerCode && updateDto.customerCode !== customer.customerCode) {
+      const existing = await this.findByCode(updateDto.customerCode);
+      if (existing) {
+        throw new BadRequestException(
+          `Kode customer "${updateDto.customerCode}" sudah digunakan`,
+        );
+      }
+    }
+
+    Object.assign(customer, updateDto);
+    return this.customerRepo.save(customer);
+  }
+
+  async remove(id: number): Promise<void> {
+    const result = await this.customerRepo.delete(id);
+    if (result.affected === 0) {
+      throw new NotFoundException(`Customer dengan ID "${id}" tidak ditemukan`);
+    }
+  }
+
+  // 🔹 Upload massal (JSON)
+  async upload(dto: UploadCustomersDto) {
+    const results = [];
+    const errors = [];
+
+    for (const [index, customerDto] of dto.customers.entries()) {
+      try {
+        const customer = await this.create(customerDto);
+        results.push(customer);
+      } catch (error) {
+        errors.push({
+          index: index + 1,
+          customerCode: customerDto.customerCode,
+          error: error.message || 'Gagal menyimpan customer',
+        });
+      }
+    }
+
+    return {
+      success: results.length,
+      failed: errors.length,
+      results,
+      errors,
+    };
   }
 }

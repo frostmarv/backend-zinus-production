@@ -16,7 +16,7 @@ import { BondingModule } from './modules/bonding/bonding.module';
 import { BondingRejectModule } from './modules/bonding-reject/bonding-reject.module';
 import { CuttingModule } from './modules/cutting/cutting.module';
 import { CuttingReplacementModule } from './modules/cutting-replacement/cutting-replacement.module';
-import { CustomersModule } from './modules/customers/customers.module';
+import { CustomerModule } from './modules/customers/customers.module';
 import { MasterDataModule } from './modules/master-data/master-data.module';
 import { NotificationModule } from './modules/notification/notification.module';
 import { ProductModule } from './modules/products/product.module';
@@ -84,7 +84,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     BondingRejectModule,
     CuttingModule,
     CuttingReplacementModule,
-    CustomersModule,
+    CustomerModule,
     MasterDataModule,
     NotificationModule,
     ProductModule,

@@ -111,25 +111,23 @@ export class ProductionPlanningService {
     return this.findOneById(id);
   }
 
+  // ✅ REVISI: Hanya hapus item & order (jika kosong). JANGAN hapus Product/Customer.
   async delete(id: number) {
-    // Ambil item lengkap dengan relasi ke order dan product
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
-      relations: ['order', 'product'],
+      relations: ['order'],
     });
 
     if (!item) {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
-    const { order, product } = item;
-    const orderId = order.orderId;
-    const productId = product.productId;
+    const orderId = item.order.orderId;
 
     // 1. Hapus item planning
     await this.itemRepo.remove(item);
 
-    // 2. Hapus order jika tidak ada item lain
+    // 2. Hapus order hanya jika tidak ada item lain
     const remainingItemsInOrder = await this.itemRepo.count({
       where: { order: { orderId } },
     });
@@ -139,25 +137,14 @@ export class ProductionPlanningService {
       orderDeleted = true;
     }
 
-    // 3. Hapus product jika tidak dipakai di item lain
-    const productUsageCount = await this.itemRepo.count({
-      where: { product: { productId } },
-    });
-    let productDeleted = false;
-    if (productUsageCount === 0) {
-      await this.productRepo.delete(productId);
-      productDeleted = true;
-    }
-
-    // ❌ Customer TIDAK PERNAH dihapus
-
+    // ✅ JANGAN hapus Product atau Customer — biarkan sebagai master data permanen
     return {
       message: `Item with ID ${id} has been deleted`,
       details: {
         itemDeleted: true,
         orderDeleted,
-        productDeleted,
-        customerDeleted: false,
+        productDeleted: false, // ← selalu false
+        customerDeleted: false, // ← selalu false
       },
     };
   }
@@ -190,6 +177,7 @@ export class ProductionPlanningService {
   }
 
   async upload(dto: UploadProductionPlanningDto) {
+    // 🔹 Cari atau buat Customer (find-or-create)
     let customer = await this.customerRepo.findOne({
       where: { customerName: dto.shipToName },
     });
@@ -203,6 +191,7 @@ export class ProductionPlanningService {
       await this.customerRepo.save(customer);
     }
 
+    // 🔹 Cari atau buat ProductionOrder (find-or-create)
     let order = await this.orderRepo.findOne({
       where: {
         poNumber: dto.poNumber,
@@ -228,6 +217,7 @@ export class ProductionPlanningService {
       try {
         this.parseSpec(itemDto.spec);
 
+        // 🔹 Cari atau buat Product (find-or-create)
         let product = await this.productRepo.findOne({
           where: { sku: itemDto.sku },
         });
