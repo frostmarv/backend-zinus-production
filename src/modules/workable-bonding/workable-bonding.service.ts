@@ -1,4 +1,3 @@
-// src/modules/workable-bonding/workable-bonding.service.ts
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -33,7 +32,6 @@ export class WorkableBondingService {
         shipToName: p.shipToName,
         sku: p.sku,
         week: p.week,
-        // Konversi quantityOrder ke number
         quantityOrder: Number(p.quantityOrder) || 0,
         entries: [] as any[],
       });
@@ -58,10 +56,9 @@ export class WorkableBondingService {
 
     for (const entry of skuWeekMap.values()) {
       for (const item of entry.entries) {
-        // 🔥 Konversi semua field numerik ke number
         item.cutting_qty = Number(item.cutting_qty) || 0;
         item.net_qty = Number(item.net_qty) || 0;
-        item.bonding_qty = Number(item.bonding_qty) || 0; // Ini yang utama
+        item.bonding_qty = Number(item.bonding_qty) || 0;
         item.foaming_date = item.foaming_date || null;
         item.foaming_date_completed = Boolean(item.foaming_date_completed);
         item.is_hole = Boolean(item.is_hole);
@@ -89,7 +86,6 @@ export class WorkableBondingService {
       weeks.sort((a, b) => a.week - b.week);
 
       const active = weeks.find((w) => {
-        // 🔧 Gunakan Number di dalam reduce
         const totalBonding = w.entries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remain = w.quantityOrder - totalBonding;
         return remain > 0;
@@ -105,11 +101,10 @@ export class WorkableBondingService {
         });
 
         const netQtys = availableEntries
-          .map((e) => Number(e.net_qty) || 0) // Pastikan jadi number
+          .map((e) => Number(e.net_qty) || 0)
           .filter((v) => typeof v === 'number' && !isNaN(v)) as number[];
         const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
 
-        // 🔧 Konversi ke number saat penjumlahan
         const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remainProduksi = Number(active.quantityOrder) - totalBonding;
 
@@ -185,11 +180,27 @@ export class WorkableBondingService {
       }
     }
 
-    return result.sort(
-      (a, b) =>
+    // 🔥 URUTKAN: Running > Halted > Completed > Not Started
+    return result.sort((a, b) => {
+      const statusPriority = {
+        'Running': 1,
+        'Halted': 2,
+        'Completed': 3,
+        'Not Started': 4,
+      };
+      const priorityA = statusPriority[a.status] ?? 5;
+      const priorityB = statusPriority[b.status] ?? 5;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      // Jika status sama, urutkan berdasarkan shipToName, sku
+      return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
-        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
-    );
+        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' })
+      );
+    });
   }
 
   async getWorkableDetail(): Promise<any[]> {
@@ -220,7 +231,6 @@ export class WorkableBondingService {
       weeks.sort((a, b) => a.week - b.week);
 
       const active = weeks.find((w) => {
-        // 🔧 Konversi ke number saat penjumlahan
         const totalBonding = w.entries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remain = w.quantityOrder - totalBonding;
         return remain > 0;
@@ -235,7 +245,6 @@ export class WorkableBondingService {
 
         for (const e of allEntries) {
           const layerIdx = Math.min(Math.max(Number(e.layer_index) || 1, 1), 4);
-          // 🔧 Pastikan penjumlahan numerik
           layerBondingQtys[layerIdx] += (Number(e.bonding_qty) || 0);
 
           if (e.foaming_date && !e.foaming_date_completed) {
@@ -260,7 +269,6 @@ export class WorkableBondingService {
           if (layerWorkable < minWorkable) minWorkable = layerWorkable;
         }
 
-        // 🔧 Konversi ke number saat penjumlahan
         const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remainProduksi = Number(active.quantityOrder) - totalBonding;
         const totalHoleRemain = Object.values(layerHoleQtys).reduce((sum, v) => sum + v, 0);
@@ -326,11 +334,27 @@ export class WorkableBondingService {
       }
     }
 
-    return result.sort(
-      (a, b) =>
+    // 🔥 URUTKAN: Running > Halted > Completed > Not Started
+    return result.sort((a, b) => {
+      const statusPriority = {
+        'Running': 1,
+        'Halted': 2,
+        'Completed': 3,
+        'Not Started': 4,
+      };
+      const priorityA = statusPriority[a.status] ?? 5;
+      const priorityB = statusPriority[b.status] ?? 5;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      // Jika status sama, urutkan berdasarkan shipToName, sku
+      return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
-        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }),
-    );
+        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' })
+      );
+    });
   }
 
   async getWorkableReject(): Promise<any[]> {
@@ -441,13 +465,36 @@ export class WorkableBondingService {
       }
     }
 
-    return result.sort(
-      (a, b) =>
+    // 🔥 URUTKAN: Tambahkan status berdasarkan bonding data untuk urutan
+    const bondingStatusMap = new Map<string, string>();
+    for (const item of bondingData) {
+      bondingStatusMap.set(`${item.shipToName}|${item.sku}`, item.status);
+    }
+
+    return result.sort((a, b) => {
+      const statusA = bondingStatusMap.get(`${a.shipToName}|${a.sku}`) || 'Not Started';
+      const statusB = bondingStatusMap.get(`${b.shipToName}|${b.sku}`) || 'Not Started';
+
+      const statusPriority = {
+        'Running': 1,
+        'Halted': 2,
+        'Completed': 3,
+        'Not Started': 4,
+      };
+      const priorityA = statusPriority[statusA] ?? 5;
+      const priorityB = statusPriority[statusB] ?? 5;
+
+      if (priorityA !== priorityB) {
+        return priorityA - priorityB;
+      }
+
+      // Jika status sama, urutkan berdasarkan shipToName, sku, layer_index
+      return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
         a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }) ||
-        a.week - b.week ||
-        a.layer_index - b.layer_index,
-    );
+        a.layer_index - b.layer_index
+      );
+    });
   }
 
   private async getRawWorkableData(): Promise<any[]> {
