@@ -96,7 +96,7 @@ export class AssemblyLayersService {
       description: dto.description,
       descriptionLine2: dto.description_line_2 ?? null,
       layerIndex: dto.layer_index ?? null,
-      categoryLayers: dto.category_layers ?? null,
+      categoryLayers: dto.categoryLayers ?? null,
     });
 
     const saved = await this.assemblyLayerRepo.save(layer);
@@ -170,8 +170,8 @@ export class AssemblyLayersService {
     if (dto.layer_index !== undefined) {
       layer.layerIndex = dto.layer_index;
     }
-    if (dto.category_layers !== undefined) {
-      layer.categoryLayers = dto.category_layers;
+    if (dto.categoryLayers !== undefined) {
+      layer.categoryLayers = dto.categoryLayers;
     }
     if (dto.product_sku !== undefined) {
       layer.product = targetProduct;

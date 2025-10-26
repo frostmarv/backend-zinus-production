@@ -89,6 +89,7 @@ export class ProductionPlanningService {
     return num;
   }
 
+  // ✅ REVISI: Bisa ganti produk (SKU) tanpa merubah tabel products
   async update(id: number, dto: UpdateProductionPlanningDto) {
     const item = await this.itemRepo.findOne({
       where: { itemId: id },
@@ -99,6 +100,20 @@ export class ProductionPlanningService {
       throw new NotFoundException(`Item with ID ${id} not found`);
     }
 
+    // 🔹 Jika SKU di-update, cari produk baru
+    if (dto.sku !== undefined) {
+      const newProduct = await this.productRepo.findOne({
+        where: { sku: dto.sku },
+      });
+
+      if (!newProduct) {
+        throw new BadRequestException(`Product dengan SKU "${dto.sku}" tidak ditemukan`);
+      }
+
+      item.product = newProduct; // ✅ Ganti relasi produk (tidak mengubah products)
+    }
+
+    // 🔹 Update field lain seperti biasa
     if (dto.orderQty !== undefined) item.plannedQty = this.parseInteger(dto.orderQty, 'orderQty');
     if (dto.sample !== undefined) item.sampleQty = this.parseInteger(dto.sample, 'sample');
     if (dto.week !== undefined) item.weekNumber = this.parseInteger(dto.week, 'week');

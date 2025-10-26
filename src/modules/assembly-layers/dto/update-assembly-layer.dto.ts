@@ -1,10 +1,9 @@
-// src/modules/assembly-layers/dto/update-assembly-layer.dto.ts
 import { IsString, IsInt, IsOptional, MaxLength } from 'class-validator';
 
 export class UpdateAssemblyLayerDto {
   @IsOptional()
   @IsString()
-  product_sku?: string; // 👈 Ganti dari product_id
+  product_sku?: string;
 
   @IsOptional()
   @IsString()
@@ -25,7 +24,7 @@ export class UpdateAssemblyLayerDto {
   layer_index?: number;
 
   @IsOptional()
-  @IsString()
+  @IsString() // ✅ Tambah validasi
   @MaxLength(50)
-  category_layers?: string;
+  categoryLayers?: string; // ✅ Ubah jadi camelCase
 }

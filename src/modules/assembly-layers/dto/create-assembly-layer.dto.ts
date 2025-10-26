@@ -1,4 +1,3 @@
-// src/modules/assembly-layers/dto/create-assembly-layer.dto.ts
 import {
   IsNotEmpty,
   IsString,
@@ -10,7 +9,7 @@ import {
 export class CreateAssemblyLayerDto {
   @IsNotEmpty()
   @IsString()
-  product_sku: string; // 👈 Ganti dari product_id
+  product_sku: string;
 
   @IsNotEmpty()
   @IsString()
@@ -31,7 +30,7 @@ export class CreateAssemblyLayerDto {
   layer_index?: number;
 
   @IsOptional()
-  @IsString()
+  @IsString() // ✅ Tambah validasi
   @MaxLength(50)
-  category_layers?: string;
+  categoryLayers?: string; // ✅ Ubah jadi camelCase
 }
