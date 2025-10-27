@@ -178,14 +178,14 @@ export class CuttingController {
           dto.group, // Group
           dto.time, // Time
           entry.customer || '-', // Customer
-          '-', // CustomerPO (dihapus)
+          // '-', // CustomerPO (dihapus)
           entry.poNumber || '-', // PO Internal
           entry.sku || '-', // SKU
           entry.sCode || '-', // S-Code
           entry.description || '-', // Description
           entry.quantityOrder || 0, // Qty Order
           entry.quantityProduksi || 0, // Qty Produksi
-          simpleRemain, // Sisa (simple calculation untuk sheets)
+          // simpleRemain, // Sisa (simple calculation untuk sheets)
           entry.week || '-', // Week
         ];
       });
