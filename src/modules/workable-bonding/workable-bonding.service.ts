@@ -1,3 +1,4 @@
+// src/modules/bonding/workable-bonding.service.ts
 import { Injectable } from '@nestjs/common';
 import { DataSource } from 'typeorm';
 
@@ -30,9 +31,7 @@ export class WorkableBondingService {
     `);
   }
 
-  // 🔽 Dihapus: calculateProductionStatus — diganti dengan pendekatan baru
-
-  async getWorkableBonding(): Promise<any[]> {
+  private async getActiveWeekData() {
     // Ambil rencana produksi
     const plannedMap = new Map<string, number>();
     const planned = await this.getPlannedWeeks();
@@ -41,30 +40,27 @@ export class WorkableBondingService {
       plannedMap.set(key, Number(p.quantityOrder) || 0);
     }
 
-    // Ambil data aktual TANPA agregasi is_hole
-    const actualData = await this.dataSource.query(`
+    // Ambil semua entri cutting TANPA agregasi
+    const cuttingEntries = await this.dataSource.query(`
       SELECT 
         c.customer_name AS "shipToName",
-        p.sku,
-        poi.week_number AS "week",
-        COALESCE(al.second_item_number, 'MAIN') AS "s_code",
+        e.sku,
+        e.week,
+        COALESCE(e.s_code, 'MAIN') AS "s_code",
         COALESCE(al.layer_index, 1) AS "layer_index",
-        COALESCE(e.quantity_produksi, 0) AS "cutting_qty",
-        COALESCE(e.quantity_produksi, 0) - COALESCE(ng.net_ng_qty, 0) AS "net_qty",
+        e.quantity_produksi AS "cutting_qty",
+        e.quantity_produksi - COALESCE(ng.net_ng_qty, 0) AS "net_qty",
         e.foaming_date,
         e.foaming_date_completed,
         e.is_hole,
         e.quantity_hole,
-        e.quantity_hole_remain,
-        COALESCE(bs.bonding_qty, 0) AS "bonding_qty"
-      FROM production_order_items poi
+        e.quantity_hole_remain
+      FROM production_cutting_entries e
+      JOIN products p ON e.sku = p.sku
+      JOIN production_order_items poi ON p.product_id = poi.product_product_id AND poi.week_number::TEXT = e.week
       JOIN production_orders po ON poi.order_order_id = po.order_id
       JOIN customers c ON po.customer_customer_id = c.customer_id
-      JOIN products p ON poi.product_product_id = p.product_id
-      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id
-      LEFT JOIN production_cutting_entries e 
-        ON p.sku = e.sku 
-        AND poi.week_number::TEXT = e.week
+      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id 
         AND COALESCE(al.second_item_number, 'MAIN') = COALESCE(e.s_code, 'MAIN')
       LEFT JOIN (
         SELECT 
@@ -78,64 +74,59 @@ export class WorkableBondingService {
         WHERE br.status != 'CANCELLED'
         GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
       ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
-      LEFT JOIN (
-        SELECT sku, week, SUM(quantity_produksi) AS "bonding_qty"
-        FROM bonding_summary
-        GROUP BY sku, week
-      ) bs ON p.sku = bs.sku AND poi.week_number::TEXT = bs.week
-      WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
-        AND e.id IS NOT NULL
-      ORDER BY c.customer_name, p.sku, poi.week_number, "layer_index"
+      WHERE p.category = 'FOAM' AND e.week IS NOT NULL
+      ORDER BY c.customer_name, e.sku, e.week, "layer_index"
     `);
 
-    // Normalisasi data
-    const normalizedData = actualData.map(row => ({
-      ...row,
+    // Ambil bonding summary
+    const bondingMap = new Map<string, number>();
+    const bondingData = await this.dataSource.query(`
+      SELECT sku, week, SUM(quantity_produksi) AS total
+      FROM bonding_summary
+      GROUP BY sku, week
+    `);
+    for (const row of bondingData) {
+      bondingMap.set(`${row.sku}|${row.week}`, Number(row.total) || 0);
+    }
+
+    // Normalisasi entri cutting
+    const normalizedEntries = cuttingEntries.map(row => ({
+      shipToName: row.shipToName,
+      sku: row.sku,
+      week: Number(row.week),
+      s_code: row.s_code,
+      layer_index: Number(row.layer_index) || 1,
       cutting_qty: Number(row.cutting_qty) || 0,
       net_qty: Number(row.net_qty) || 0,
-      bonding_qty: Number(row.bonding_qty) || 0,
       foaming_date: row.foaming_date || null,
       foaming_date_completed: Boolean(row.foaming_date_completed),
       is_hole: Boolean(row.is_hole),
       quantity_hole: Number(row.quantity_hole) || 0,
       quantity_hole_remain: Number(row.quantity_hole_remain) || 0,
-      layer_index: Number(row.layer_index) || 1,
       quantityOrder: plannedMap.get(`${row.shipToName}|${row.sku}|${row.week}`) || 0,
+      bonding_qty: bondingMap.get(`${row.sku}|${row.week}`) || 0,
     }));
 
     // Grup berdasarkan (shipToName, sku, week)
     const skuWeekGroups = new Map<string, any[]>();
-    for (const row of normalizedData) {
-      const key = `${row.shipToName}|${row.sku}|${row.week}`;
+    for (const entry of normalizedEntries) {
+      const key = `${entry.shipToName}|${entry.sku}|${entry.week}`;
       if (!skuWeekGroups.has(key)) {
         skuWeekGroups.set(key, []);
       }
-      skuWeekGroups.get(key)!.push(row);
+      skuWeekGroups.get(key)!.push(entry);
     }
 
-    const result: any[] = [];
+    // Bangun data per (sku, week) dengan status
+    const skuWeekData: any[] = [];
     for (const [key, entries] of skuWeekGroups.entries()) {
       const [shipToName, sku, weekStr] = key.split('|');
       const week = Number(weekStr);
       const quantityOrder = entries[0]?.quantityOrder || 0;
-      
-      const totalBonding = entries.reduce((sum, e) => sum + e.bonding_qty, 0);
+      const totalBonding = entries[0]?.bonding_qty || 0;
       const remainProduksi = quantityOrder - totalBonding;
 
-      if (remainProduksi <= 0) {
-        result.push({
-          week,
-          shipToName,
-          sku,
-          quantityOrder: this.formatNumberOrDash(quantityOrder),
-          workable: '-',
-          bonding: this.formatNumberOrDash(totalBonding),
-          'Remain Produksi': '-',
-          status: 'Completed',
-          remarks: 'Bonding completed',
-        });
-        continue;
-      }
+      const isCompleted = remainProduksi <= 0;
 
       // Pisahkan entri berdasarkan kondisi
       const foamingEntries = entries.filter(e => e.foaming_date && !e.foaming_date_completed);
@@ -146,7 +137,7 @@ export class WorkableBondingService {
       const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
       const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
 
-      // Hitung workable: min(net_qty) dari entri normal - totalBonding
+      // Hitung workable: min(net_qty) dari entri normal
       const netQtys = normalEntries.map(e => e.net_qty).filter(q => q > 0);
       const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
       const workable = Math.max(minNetQty - totalBonding, 0);
@@ -168,129 +159,114 @@ export class WorkableBondingService {
       }
 
       const status = 
-        totalFoaming > 0 || totalHoleRemain > 0 
-          ? 'Halted'
-          : normalEntries.some(e => e.cutting_qty > 0)
-            ? 'Running'
-            : 'Not Started';
+        isCompleted 
+          ? 'Completed'
+          : totalFoaming > 0 || totalHoleRemain > 0 
+            ? 'Halted'
+            : normalEntries.some(e => e.cutting_qty > 0)
+              ? 'Running'
+              : 'Not Started';
 
-      result.push({
+      skuWeekData.push({
         week,
         shipToName,
         sku,
-        quantityOrder: this.formatNumberOrDash(quantityOrder),
-        workable: this.formatNumberOrDash(workable),
-        bonding: this.formatNumberOrDash(totalBonding),
-        'Remain Produksi': this.formatNumberOrDash(remainProduksi),
+        quantityOrder,
+        workable,
+        bonding: totalBonding,
+        remainProduksi,
         status,
         remarks: statuses.join(', '),
+        entries, // simpan entri asli untuk detail
       });
     }
+
+    return skuWeekData;
+  }
+
+  async getWorkableBonding(): Promise<any[]> {
+    const skuWeekData = await this.getActiveWeekData();
+
+    // Grup berdasarkan week
+    const weekGroups = new Map<number, any[]>();
+    for (const item of skuWeekData) {
+      const week = item.week;
+      if (!weekGroups.has(week)) {
+        weekGroups.set(week, []);
+      }
+      weekGroups.get(week)!.push(item);
+    }
+
+    // Cari week terendah yang masih ada item aktif (bukan completed semua)
+    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    let activeWeek = null;
+    for (const week of sortedWeeks) {
+      const items = weekGroups.get(week)!;
+      const hasActive = items.some(item => item.status !== 'Completed');
+      if (hasActive) {
+        activeWeek = week;
+        break;
+      }
+    }
+
+    if (activeWeek === null) {
+      return []; // Tidak ada week aktif
+    }
+
+    const activeItems = weekGroups.get(activeWeek)!.filter(item => item.status !== 'Completed');
+
+    const result = activeItems.map(item => ({
+      week: item.week,
+      shipToName: item.shipToName,
+      sku: item.sku,
+      quantityOrder: this.formatNumberOrDash(item.quantityOrder),
+      workable: this.formatNumberOrDash(item.workable),
+      bonding: this.formatNumberOrDash(item.bonding),
+      'Remain Produksi': this.formatNumberOrDash(item.remainProduksi),
+      status: item.status,
+      remarks: item.remarks || '-',
+    }));
 
     return this.sortResult(result);
   }
 
   async getWorkableDetail(): Promise<any[]> {
-    const plannedMap = new Map<string, number>();
-    const planned = await this.getPlannedWeeks();
-    for (const p of planned) {
-      const key = `${p.shipToName}|${p.sku}|${p.week}`;
-      plannedMap.set(key, Number(p.quantityOrder) || 0);
-    }
+    const skuWeekData = await this.getActiveWeekData();
 
-    const actualData = await this.dataSource.query(`
-      SELECT 
-        c.customer_name AS "shipToName",
-        p.sku,
-        poi.week_number AS "week",
-        COALESCE(al.second_item_number, 'MAIN') AS "s_code",
-        COALESCE(al.layer_index, 1) AS "layer_index",
-        COALESCE(e.quantity_produksi, 0) AS "cutting_qty",
-        COALESCE(e.quantity_produksi, 0) - COALESCE(ng.net_ng_qty, 0) AS "net_qty",
-        e.foaming_date,
-        e.foaming_date_completed,
-        e.is_hole,
-        e.quantity_hole,
-        e.quantity_hole_remain,
-        COALESCE(bs.bonding_qty, 0) AS "bonding_qty"
-      FROM production_order_items poi
-      JOIN production_orders po ON poi.order_order_id = po.order_id
-      JOIN customers c ON po.customer_customer_id = c.customer_id
-      JOIN products p ON poi.product_product_id = p.product_id
-      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id
-      LEFT JOIN production_cutting_entries e 
-        ON p.sku = e.sku 
-        AND poi.week_number::TEXT = e.week
-        AND COALESCE(al.second_item_number, 'MAIN') = COALESCE(e.s_code, 'MAIN')
-      LEFT JOIN (
-        SELECT 
-          br.sku,
-          COALESCE(br.s_code, 'MAIN') AS s_code,
-          GREATEST(SUM(br.ng_quantity) - COALESCE(SUM(rp.processed_qty), 0), 0) AS "net_ng_qty"
-        FROM bonding_reject br
-        LEFT JOIN replacement_progress rp 
-          ON br.id = rp.bonding_reject_id 
-          AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
-        WHERE br.status != 'CANCELLED'
-        GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
-      ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
-      LEFT JOIN (
-        SELECT sku, week, SUM(quantity_produksi) AS "bonding_qty"
-        FROM bonding_summary
-        GROUP BY sku, week
-      ) bs ON p.sku = bs.sku AND poi.week_number::TEXT = bs.week
-      WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
-        AND e.id IS NOT NULL
-      ORDER BY c.customer_name, p.sku, poi.week_number, "layer_index"
-    `);
-
-    const normalizedData = actualData.map(row => ({
-      ...row,
-      cutting_qty: Number(row.cutting_qty) || 0,
-      net_qty: Number(row.net_qty) || 0,
-      bonding_qty: Number(row.bonding_qty) || 0,
-      foaming_date: row.foaming_date || null,
-      foaming_date_completed: Boolean(row.foaming_date_completed),
-      is_hole: Boolean(row.is_hole),
-      quantity_hole: Number(row.quantity_hole) || 0,
-      quantity_hole_remain: Number(row.quantity_hole_remain) || 0,
-      layer_index: Number(row.layer_index) || 1,
-      quantityOrder: plannedMap.get(`${row.shipToName}|${row.sku}|${row.week}`) || 0,
-    }));
-
-    const skuWeekGroups = new Map<string, any[]>();
-    for (const row of normalizedData) {
-      const key = `${row.shipToName}|${row.sku}|${row.week}`;
-      if (!skuWeekGroups.has(key)) {
-        skuWeekGroups.set(key, []);
+    // Grup berdasarkan week
+    const weekGroups = new Map<number, any[]>();
+    for (const item of skuWeekData) {
+      const week = item.week;
+      if (!weekGroups.has(week)) {
+        weekGroups.set(week, []);
       }
-      skuWeekGroups.get(key)!.push(row);
+      weekGroups.get(week)!.push(item);
     }
+
+    // Cari week terendah yang masih ada item aktif (bukan completed semua)
+    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    let activeWeek = null;
+    for (const week of sortedWeeks) {
+      const items = weekGroups.get(week)!;
+      const hasActive = items.some(item => item.status !== 'Completed');
+      if (hasActive) {
+        activeWeek = week;
+        break;
+      }
+    }
+
+    if (activeWeek === null) {
+      return []; // Tidak ada week aktif
+    }
+
+    const activeItems = weekGroups.get(activeWeek)!.filter(item => item.status !== 'Completed');
 
     const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
     const emptyLayers = { 'Layer 1': 0, 'Layer 2': 0, 'Layer 3': 0, 'Layer 4': 0 };
     const result: any[] = [];
 
-    for (const [key, entries] of skuWeekGroups.entries()) {
-      const [shipToName, sku, weekStr] = key.split('|');
-      const week = Number(weekStr);
-      const quantityOrder = entries[0]?.quantityOrder || 0;
-      const totalBonding = entries.reduce((sum, e) => sum + e.bonding_qty, 0);
-      const remainProduksi = quantityOrder - totalBonding;
-
-      if (remainProduksi <= 0) continue;
-
-      const foamingEntries = entries.filter(e => e.foaming_date && !e.foaming_date_completed);
-      const holeEntries = entries.filter(e => e.is_hole);
-      const normalEntries = entries.filter(e => !e.foaming_date && !e.is_hole);
-
-      const totalFoaming = foamingEntries.reduce((sum, e) => sum + e.cutting_qty, 0);
-      const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
-      const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
-
-      const netQtys = normalEntries.map(e => e.net_qty).filter(q => q > 0);
-      const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
-      const workable = Math.max(minNetQty - totalBonding, 0);
+    for (const item of activeItems) {
+      const { entries, quantityOrder, bonding: totalBonding, remainProduksi, status, remarks } = item;
 
       // Hitung per layer
       const layerNet: Record<number, number> = {1:0,2:0,3:0,4:0};
@@ -299,7 +275,7 @@ export class WorkableBondingService {
 
       for (const e of entries) {
         const idx = Math.min(Math.max(e.layer_index, 1), 4);
-        layerBonding[idx] += e.bonding_qty;
+        layerBonding[idx] = totalBonding; // Bonding di level SKU, bukan layer
         
         if (e.foaming_date && !e.foaming_date_completed) {
           continue;
@@ -320,39 +296,17 @@ export class WorkableBondingService {
         layers[layerNames[i]] = this.formatNumberOrDash(workableLayer);
       }
 
-      const statuses: string[] = [];
-      if (foamingEntries.length > 0) {
-        const dateStr = new Date(foamingEntries[0].foaming_date).toLocaleString('id-ID');
-        statuses.push(`Foaming Date: ${dateStr}`);
-      }
-      if (totalHoleRemain > 0) {
-        statuses.push(`Hole Processing: ${totalHoleQty - totalHoleRemain}/${totalHoleQty} done`);
-      }
-      if (statuses.length === 0 && normalEntries.some(e => e.cutting_qty > 0)) {
-        statuses.push('Cutting in progress');
-      }
-      if (statuses.length === 0) {
-        statuses.push('Waiting for cutting');
-      }
-
-      const status = 
-        totalFoaming > 0 || totalHoleRemain > 0 
-          ? 'Halted'
-          : normalEntries.some(e => e.cutting_qty > 0)
-            ? 'Running'
-            : 'Not Started';
-
       result.push({
-        shipToName,
-        sku,
-        week,
+        shipToName: item.shipToName,
+        sku: item.sku,
+        week: item.week,
         quantityOrder: this.formatNumberOrDash(quantityOrder),
         ...layers,
-        workable: this.formatNumberOrDash(workable),
+        workable: this.formatNumberOrDash(item.workable),
         bonding: this.formatNumberOrDash(totalBonding),
         'Remain Produksi': this.formatNumberOrDash(remainProduksi),
         status,
-        remarks: statuses.join(', '),
+        remarks: remarks || '-',
       });
     }
 
@@ -360,6 +314,7 @@ export class WorkableBondingService {
   }
 
   async getWorkableReject(): Promise<any[]> {
+    // ... (tetap sama seperti sebelumnya)
     const activeWeeks = new Map<string, number>();
     const bondingData = await this.getWorkableBonding();
     for (const row of bondingData) {
