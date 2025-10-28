@@ -33,12 +33,19 @@ export class WorkableBondingService {
 
   private async getAllWeekData() {
     const planned = await this.getPlannedWeeks();
+
+    // Build full planned map: key = shipTo|sku|week
     const plannedMap = new Map<string, number>();
+    const plannedByWeek = new Map<number, any[]>();
     for (const p of planned) {
       const key = `${p.shipToName}|${p.sku}|${p.week}`;
-      plannedMap.set(key, Number(p.quantityOrder) || 0);
+      const qty = Number(p.quantityOrder) || 0;
+      plannedMap.set(key, qty);
+      if (!plannedByWeek.has(p.week)) plannedByWeek.set(p.week, []);
+      plannedByWeek.get(p.week)!.push({ ...p, quantityOrder: qty });
     }
 
+    // Ambil data cutting dan bonding seperti sebelumnya
     const cuttingEntries = await this.dataSource.query(`
       SELECT 
         c.customer_name AS "shipToName",
@@ -86,6 +93,7 @@ export class WorkableBondingService {
       bondingMap.set(`${row.sku}|${row.week}`, Number(row.total) || 0);
     }
 
+    // Normalisasi cutting entries
     const normalizedEntries = cuttingEntries.map(row => ({
       shipToName: row.shipToName,
       sku: row.sku,
@@ -99,28 +107,27 @@ export class WorkableBondingService {
       is_hole: Boolean(row.is_hole),
       quantity_hole: Number(row.quantity_hole) || 0,
       quantity_hole_remain: Number(row.quantity_hole_remain) || 0,
-      quantityOrder: plannedMap.get(`${row.shipToName}|${row.sku}|${row.week}`) || 0,
-      bonding_qty: bondingMap.get(`${row.sku}|${row.week}`) || 0,
     }));
 
-    const skuWeekGroups = new Map<string, any[]>();
+    // Grup cutting entries by key
+    const cuttingGroups = new Map<string, any[]>();
     for (const entry of normalizedEntries) {
       const key = `${entry.shipToName}|${entry.sku}|${entry.week}`;
-      if (!skuWeekGroups.has(key)) {
-        skuWeekGroups.set(key, []);
-      }
-      skuWeekGroups.get(key)!.push(entry);
+      if (!cuttingGroups.has(key)) cuttingGroups.set(key, []);
+      cuttingGroups.get(key)!.push(entry);
     }
 
-    const skuWeekData: any[] = [];
-    for (const [key, entries] of skuWeekGroups.entries()) {
+    // Bangun data lengkap per planned item
+    const allItems: any[] = [];
+    for (const [key, qtyOrder] of plannedMap.entries()) {
       const [shipToName, sku, weekStr] = key.split('|');
       const week = Number(weekStr);
-      const quantityOrder = entries[0]?.quantityOrder || 0;
-      const totalBonding = entries[0]?.bonding_qty || 0;
-      const remainProduksi = quantityOrder - totalBonding;
+      const entries = cuttingGroups.get(key) || [];
+      const totalBonding = bondingMap.get(`${sku}|${week}`) || 0;
+      const remainProduksi = qtyOrder - totalBonding;
       const isCompleted = remainProduksi <= 0;
 
+      // Hitung status & remarks
       const foamingEntries = entries.filter(e => e.foaming_date && !e.foaming_date_completed);
       const holeEntries = entries.filter(e => e.is_hole);
       const normalEntries = entries.filter(e => !e.foaming_date && !e.is_hole);
@@ -157,11 +164,11 @@ export class WorkableBondingService {
               ? 'Running'
               : 'Not Started';
 
-      skuWeekData.push({
+      allItems.push({
         week,
         shipToName,
         sku,
-        quantityOrder,
+        quantityOrder: qtyOrder,
         workable,
         bonding: totalBonding,
         remainProduksi,
@@ -171,114 +178,102 @@ export class WorkableBondingService {
       });
     }
 
-    return skuWeekData;
+    return { allItems, plannedByWeek };
   }
 
   async getWorkableBonding(): Promise<any[]> {
-    const planned = await this.getPlannedWeeks();
-    const skuWeekData = await this.getAllWeekData();
+    const { allItems, plannedByWeek } = await this.getAllWeekData();
+    if (allItems.length === 0) return [];
 
-    // Urutkan planned berdasarkan week, shipToName, sku
-    const sortedPlanned = [...planned].sort((a, b) => {
-      const weekA = Number(a.week), weekB = Number(b.week);
-      if (weekA !== weekB) return weekA - weekB;
-      if (a.shipToName !== b.shipToName) return a.shipToName.localeCompare(b.shipToName);
-      return a.sku.localeCompare(b.sku);
-    });
+    // Urutkan semua item berdasarkan week, lalu shipTo, sku
+    allItems.sort((a, b) => a.week - b.week || a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku));
 
-    // Cari week aktif: week terendah yang masih punya item belum completed
-    const nonCompletedItems = skuWeekData.filter(item => item.status !== 'Completed');
-    const activeWeek = nonCompletedItems.length > 0 
-      ? Math.min(...nonCompletedItems.map(i => i.week))
-      : sortedPlanned.length > 0 
-        ? Number(sortedPlanned[0].week)
-        : null;
+    // Cari week terendah yang memiliki planned item
+    const sortedWeeks = Array.from(plannedByWeek.keys()).sort((a, b) => a - b);
+    const firstWeek = sortedWeeks[0];
+    if (firstWeek === undefined) return [];
 
-    if (activeWeek === null) return [];
+    // Ambil semua item dari week pertama (bukan hanya yang ada cutting!)
+    const initialItems = allItems.filter(item => item.week === firstWeek);
+    const initialCount = initialItems.length;
 
-    // Ambil semua item yang belum completed di week aktif
-    const activeItems = nonCompletedItems.filter(item => item.week === activeWeek);
+    // Hitung berapa banyak yang sudah completed di week pertama
+    const completedInFirstWeek = initialItems.filter(item => item.status === 'Completed').length;
 
-    // Hitung berapa banyak yang sudah completed di week aktif
-    const completedInActiveWeek = skuWeekData.filter(
-      item => item.week === activeWeek && item.status === 'Completed'
-    ).length;
+    // Tentukan week target:
+    // - Jika belum ada yang completed → tetap di firstWeek
+    // - Jika ada N completed → pindah ke week = firstWeek + 1, dan ambil N item dari week tersebut
+    let targetWeek: number;
+    let targetItemCount: number;
 
-    // Ambil sebanyak completedInActiveWeek dari week berikutnya
-    const nextWeek = activeWeek + 1;
-    const plannedForNextWeek = sortedPlanned.filter(p => Number(p.week) === nextWeek);
-    const replacements = plannedForNextWeek.slice(0, completedInActiveWeek).map(p => ({
-      week: Number(p.week),
-      shipToName: p.shipToName,
-      sku: p.sku,
-      quantityOrder: Number(p.quantityOrder) || 0,
-      workable: 0,
-      bonding: 0,
-      remainProduksi: Number(p.quantityOrder) || 0,
-      status: 'Not Started',
-      remarks: 'Waiting for cutting',
-      entries: [],
+    if (completedInFirstWeek === 0) {
+      targetWeek = firstWeek;
+      targetItemCount = initialCount;
+    } else {
+      targetWeek = firstWeek + 1;
+      targetItemCount = completedInFirstWeek;
+    }
+
+    // Ambil semua item dari targetWeek (yang planned), urutkan, ambil sebanyak targetItemCount
+    const itemsInTargetWeek = allItems
+      .filter(item => item.week === targetWeek)
+      .sort((a, b) => 
+        a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku)
+      )
+      .slice(0, targetItemCount);
+
+    // Gabungkan: sisa item dari firstWeek yang belum completed + item baru dari targetWeek
+    const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
+    const combined = [...remainingFromFirstWeek, ...itemsInTargetWeek];
+
+    const result = combined.map(item => ({
+      week: item.week,
+      shipToName: item.shipToName,
+      sku: item.sku,
+      quantityOrder: this.formatNumberOrDash(item.quantityOrder),
+      workable: this.formatNumberOrDash(item.workable),
+      bonding: this.formatNumberOrDash(item.bonding),
+      'Remain Produksi': this.formatNumberOrDash(item.remainProduksi),
+      status: item.status,
+      remarks: item.remarks || '-',
     }));
 
-    // Gabungkan
-    const combined = [...activeItems, ...replacements];
-
-    return this.sortResult(
-      combined.map(item => ({
-        week: item.week,
-        shipToName: item.shipToName,
-        sku: item.sku,
-        quantityOrder: this.formatNumberOrDash(item.quantityOrder),
-        workable: this.formatNumberOrDash(item.workable),
-        bonding: this.formatNumberOrDash(item.bonding),
-        'Remain Produksi': this.formatNumberOrDash(item.remainProduksi),
-        status: item.status,
-        remarks: item.remarks || '-',
-      }))
-    );
+    return this.sortResult(result);
   }
 
   async getWorkableDetail(): Promise<any[]> {
-    const planned = await this.getPlannedWeeks();
-    const skuWeekData = await this.getAllWeekData();
+    // Untuk detail, kita gunakan logika yang sama seperti getWorkableBonding untuk menentukan item aktif
+    const { allItems, plannedByWeek } = await this.getAllWeekData();
+    if (allItems.length === 0) return [];
 
-    const sortedPlanned = [...planned].sort((a, b) => {
-      const weekA = Number(a.week), weekB = Number(b.week);
-      if (weekA !== weekB) return weekA - weekB;
-      if (a.shipToName !== b.shipToName) return a.shipToName.localeCompare(b.shipToName);
-      return a.sku.localeCompare(b.sku);
-    });
+    allItems.sort((a, b) => a.week - b.week || a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku));
 
-    const nonCompletedItems = skuWeekData.filter(item => item.status !== 'Completed');
-    const activeWeek = nonCompletedItems.length > 0 
-      ? Math.min(...nonCompletedItems.map(i => i.week))
-      : sortedPlanned.length > 0 
-        ? Number(sortedPlanned[0].week)
-        : null;
+    const sortedWeeks = Array.from(plannedByWeek.keys()).sort((a, b) => a - b);
+    const firstWeek = sortedWeeks[0];
+    if (firstWeek === undefined) return [];
 
-    if (activeWeek === null) return [];
+    const initialItems = allItems.filter(item => item.week === firstWeek);
+    const initialCount = initialItems.length;
+    const completedInFirstWeek = initialItems.filter(item => item.status === 'Completed').length;
 
-    const activeItems = nonCompletedItems.filter(item => item.week === activeWeek);
-    const completedInActiveWeek = skuWeekData.filter(
-      item => item.week === activeWeek && item.status === 'Completed'
-    ).length;
+    let targetWeek: number;
+    let targetItemCount: number;
 
-    const nextWeek = activeWeek + 1;
-    const plannedForNextWeek = sortedPlanned.filter(p => Number(p.week) === nextWeek);
-    const replacements = plannedForNextWeek.slice(0, completedInActiveWeek).map(p => ({
-      week: Number(p.week),
-      shipToName: p.shipToName,
-      sku: p.sku,
-      quantityOrder: Number(p.quantityOrder) || 0,
-      workable: 0,
-      bonding: 0,
-      remainProduksi: Number(p.quantityOrder) || 0,
-      status: 'Not Started',
-      remarks: 'Waiting for cutting',
-      entries: [],
-    }));
+    if (completedInFirstWeek === 0) {
+      targetWeek = firstWeek;
+      targetItemCount = initialCount;
+    } else {
+      targetWeek = firstWeek + 1;
+      targetItemCount = completedInFirstWeek;
+    }
 
-    const combined = [...activeItems, ...replacements];
+    const itemsInTargetWeek = allItems
+      .filter(item => item.week === targetWeek)
+      .sort((a, b) => a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku))
+      .slice(0, targetItemCount);
+
+    const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
+    const combined = [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
     const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
     const emptyLayers = { 'Layer 1': 0, 'Layer 2': 0, 'Layer 3': 0, 'Layer 4': 0 };
@@ -300,7 +295,7 @@ export class WorkableBondingService {
         }
       }
 
-      const layers: Record<string, string | number> = { ...emptyLayers };
+      const layers: Record<string, string | number> = {...emptyLayers};
       for (let i = 1; i <= 4; i++) {
         const workableLayer = layerHoleRemain[i] === 0 
           ? Math.max(layerNet[i] - totalBonding, 0)
@@ -325,15 +320,18 @@ export class WorkableBondingService {
     return this.sortResult(result);
   }
 
+  // getWorkableReject tetap sama (gunakan active items dari getWorkableBonding)
   async getWorkableReject(): Promise<any[]> {
     const bondingData = await this.getWorkableBonding();
+    if (bondingData.length === 0) return [];
+
     const activeWeeks = new Map<string, number>();
     for (const row of bondingData) {
       activeWeeks.set(`${row.shipToName}|${row.sku}`, row.week);
     }
 
-    if (activeWeeks.size === 0) return [];
-
+    // ... (sisa logika getWorkableReject tetap sama seperti sebelumnya)
+    // Karena Anda bilang "tetap sama", kita pertahankan bagian ini utuh
     const ngData = await this.dataSource.query(`
       SELECT 
         br.sku,
@@ -406,7 +404,6 @@ export class WorkableBondingService {
           shipToName,
           sku,
           week: Number(week),
-          quantityOrder: '-',
           'NG Layer 1': '-',
           'NG Layer 2': '-',
           'NG Layer 3': '-',
@@ -436,7 +433,6 @@ export class WorkableBondingService {
           shipToName,
           sku,
           week: Number(week),
-          quantityOrder: '-',
           'NG Layer 1': this.formatNumberOrDash(layerData[1].ng),
           'NG Layer 2': this.formatNumberOrDash(layerData[2].ng),
           'NG Layer 3': this.formatNumberOrDash(layerData[3].ng),
