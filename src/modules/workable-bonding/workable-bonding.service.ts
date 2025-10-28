@@ -5,6 +5,15 @@ import { DataSource } from 'typeorm';
 export class WorkableBondingService {
   constructor(private dataSource: DataSource) {}
 
+  // 🔽 Helper: Format angka → "-" jika 0, null, undefined, atau NaN
+  private formatNumberOrDash(value: any): string | number {
+    const num = Number(value);
+    if (isNaN(num) || num === 0) {
+      return '-';
+    }
+    return num;
+  }
+
   private async getPlannedWeeks(): Promise<any[]> {
     return await this.dataSource.query(`
       SELECT 
@@ -163,10 +172,10 @@ export class WorkableBondingService {
           week: active.week,
           shipToName: active.shipToName,
           sku: active.sku,
-          quantityOrder: Number(active.quantityOrder) || 0,
-          workable,
-          bonding: totalBonding,
-          'Remain Produksi': remainProduksi,
+          quantityOrder: this.formatNumberOrDash(active.quantityOrder),
+          workable: this.formatNumberOrDash(workable),
+          bonding: this.formatNumberOrDash(totalBonding),
+          'Remain Produksi': this.formatNumberOrDash(remainProduksi),
           status:
             remainProduksi <= 0
               ? 'Completed'
@@ -175,12 +184,11 @@ export class WorkableBondingService {
                 : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0)
                   ? 'Running'
                   : 'Not Started',
-          remarks,
+          remarks: remarks || '-',
         });
       }
     }
 
-    // 🔥 URUTKAN: Running > Halted > Completed > Not Started
     return result.sort((a, b) => {
       const statusPriority = {
         'Running': 1,
@@ -195,7 +203,6 @@ export class WorkableBondingService {
         return priorityA - priorityB;
       }
 
-      // Jika status sama, urutkan berdasarkan shipToName, sku
       return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
         a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' })
@@ -258,14 +265,14 @@ export class WorkableBondingService {
           }
         }
 
-        const layers = { ...emptyLayers };
+        const layers: Record<string, string | number> = { ...emptyLayers };
         let minWorkable = Infinity;
         for (let idx = 1; idx <= 4; idx++) {
           const net = layerNetQtys[idx];
           const bonding = layerBondingQtys[idx];
           const holeRemain = layerHoleQtys[idx];
           const layerWorkable = holeRemain === 0 ? Math.max(net - bonding, 0) : 0;
-          layers[layerNames[idx]] = layerWorkable;
+          layers[layerNames[idx]] = this.formatNumberOrDash(layerWorkable);
           if (layerWorkable < minWorkable) minWorkable = layerWorkable;
         }
 
@@ -316,11 +323,11 @@ export class WorkableBondingService {
           shipToName: active.shipToName,
           sku: active.sku,
           week: active.week,
-          quantityOrder: Number(active.quantityOrder) || 0,
+          quantityOrder: this.formatNumberOrDash(active.quantityOrder),
           ...layers,
-          workable: minWorkable === Infinity ? 0 : minWorkable,
-          bonding: totalBonding,
-          'Remain Produksi': remainProduksi,
+          workable: this.formatNumberOrDash(minWorkable === Infinity ? 0 : minWorkable),
+          bonding: this.formatNumberOrDash(totalBonding),
+          'Remain Produksi': this.formatNumberOrDash(remainProduksi),
           status:
             remainProduksi <= 0
               ? 'Completed'
@@ -329,12 +336,11 @@ export class WorkableBondingService {
                 : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0)
                   ? 'Running'
                   : 'Not Started',
-          remarks,
+          remarks: remarks || '-',
         });
       }
     }
 
-    // 🔥 URUTKAN: Running > Halted > Completed > Not Started
     return result.sort((a, b) => {
       const statusPriority = {
         'Running': 1,
@@ -349,7 +355,6 @@ export class WorkableBondingService {
         return priorityA - priorityB;
       }
 
-      // Jika status sama, urutkan berdasarkan shipToName, sku
       return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
         a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' })
@@ -441,31 +446,53 @@ export class WorkableBondingService {
             week: Number(week),
             layer_index: layerIdx,
             layer_name: layerNameMap[layerIdx],
-            ng_qty: 0,
-            replacement_qty: 0,
-            net_ng_qty: 0,
-            adjusted_net_ng: 0,
+            'NG Layer 1': '-',
+            'NG Layer 2': '-',
+            'NG Layer 3': '-',
+            'NG Layer 4': '-',
+            'NG Hole': '-',
+            'Replacement Layer 1': '-',
+            'Replacement Layer 2': '-',
+            'Replacement Layer 3': '-',
+            'Replacement Layer 4': '-',
+            'Replacement Hole': '-',
           });
         }
       } else {
+        // Kelompokkan per layer
+        const layerData: Record<number, { ng: number; rep: number }> = {
+          1: { ng: 0, rep: 0 },
+          2: { ng: 0, rep: 0 },
+          3: { ng: 0, rep: 0 },
+          4: { ng: 0, rep: 0 },
+        };
+
         for (const item of ngItems) {
-          const net_ng_qty = Number(item.ng_qty) - Number(item.replacement_qty);
-          result.push({
-            shipToName,
-            sku,
-            week: Number(week),
-            layer_index: Number(item.layer_index),
-            layer_name: layerNameMap[Number(item.layer_index)],
-            ng_qty: Number(item.ng_qty),
-            replacement_qty: Number(item.replacement_qty),
-            net_ng_qty: net_ng_qty,
-            adjusted_net_ng: Math.max(net_ng_qty, 0),
-          });
+          const idx = Math.min(Math.max(item.layer_index, 1), 4);
+          layerData[idx].ng += item.ng_qty;
+          layerData[idx].rep += item.replacement_qty;
         }
+
+        result.push({
+          shipToName,
+          sku,
+          week: Number(week),
+          quantityOrder: '-', // Tidak ada di reject, jadi tetap '-'
+          'NG Layer 1': this.formatNumberOrDash(layerData[1].ng),
+          'NG Layer 2': this.formatNumberOrDash(layerData[2].ng),
+          'NG Layer 3': this.formatNumberOrDash(layerData[3].ng),
+          'NG Layer 4': this.formatNumberOrDash(layerData[4].ng),
+          'NG Hole': '-', // Hole tidak dipisah di query ini → bisa diabaikan atau dihitung terpisah jika perlu
+          'Replacement Layer 1': this.formatNumberOrDash(layerData[1].rep),
+          'Replacement Layer 2': this.formatNumberOrDash(layerData[2].rep),
+          'Replacement Layer 3': this.formatNumberOrDash(layerData[3].rep),
+          'Replacement Layer 4': this.formatNumberOrDash(layerData[4].rep),
+          'Replacement Hole': '-',
+        });
       }
     }
 
-    // 🔥 URUTKAN: Tambahkan status berdasarkan bonding data untuk urutan
+    // Urutkan berdasarkan status dari bonding
     const bondingStatusMap = new Map<string, string>();
     for (const item of bondingData) {
       bondingStatusMap.set(`${item.shipToName}|${item.sku}`, item.status);
@@ -488,11 +515,9 @@ export class WorkableBondingService {
         return priorityA - priorityB;
       }
 
-      // Jika status sama, urutkan berdasarkan shipToName, sku, layer_index
       return (
         a.shipToName.localeCompare(b.shipToName, undefined, { sensitivity: 'base' }) ||
-        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' }) ||
-        a.layer_index - b.layer_index
+        a.sku.localeCompare(b.sku, undefined, { sensitivity: 'base' })
       );
     });
   }
