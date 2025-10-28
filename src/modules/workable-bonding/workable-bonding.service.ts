@@ -31,7 +31,7 @@ export class WorkableBondingService {
     `);
   }
 
-  private async getActiveWeekData() {
+  private async getAllWeekData() {
     // Ambil rencana produksi
     const plannedMap = new Map<string, number>();
     const planned = await this.getPlannedWeeks();
@@ -230,7 +230,7 @@ export class WorkableBondingService {
   }
 
   async getWorkableBonding(): Promise<any[]> {
-    const skuWeekData = await this.getActiveWeekData();
+    const skuWeekData = await this.getAllWeekData();
 
     // Grup berdasarkan week
     const weekGroups = new Map<number, any[]>();
@@ -242,49 +242,18 @@ export class WorkableBondingService {
       weekGroups.get(week)!.push(item);
     }
 
-    // Cari week terendah yang belum ada cuttingnya
-    const plannedWeeks = new Set<number>();
-    const planned = await this.getPlannedWeeks();
-    for (const p of planned) {
-      plannedWeeks.add(Number(p.week));
+    // Cari week terendah
+    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    const lowestWeek = sortedWeeks[0] || null;
+
+    if (lowestWeek === null) {
+      return []; // Tidak ada week
     }
 
-    const existingWeeksWithCutting = new Set<number>();
-    for (const item of skuWeekData) {
-      if (item.entries && item.entries.length > 0) { // Jika ada entri cutting
-        existingWeeksWithCutting.add(item.week);
-      }
-    }
+    // Ambil semua item dari week terendah
+    const itemsInLowestWeek = weekGroups.get(lowestWeek)!.filter(item => item.status !== 'Completed');
 
-    let activeWeek = null;
-    const sortedPlannedWeeks = Array.from(plannedWeeks).sort((a, b) => a - b);
-    for (const week of sortedPlannedWeeks) {
-      if (!existingWeeksWithCutting.has(week)) {
-        activeWeek = week;
-        break;
-      }
-    }
-
-    // Jika semua week sudah ada cuttingnya, cari week terendah yang belum completed
-    if (activeWeek === null) {
-      const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
-      for (const week of sortedWeeks) {
-        const items = weekGroups.get(week)!;
-        const hasActive = items.some(item => item.status !== 'Completed');
-        if (hasActive) {
-          activeWeek = week;
-          break;
-        }
-      }
-    }
-
-    if (activeWeek === null) {
-      return []; // Tidak ada week aktif
-    }
-
-    const activeItems = weekGroups.get(activeWeek)!.filter(item => item.status !== 'Completed');
-
-    const result = activeItems.map(item => ({
+    const result = itemsInLowestWeek.map(item => ({
       week: item.week,
       shipToName: item.shipToName,
       sku: item.sku,
@@ -300,7 +269,7 @@ export class WorkableBondingService {
   }
 
   async getWorkableDetail(): Promise<any[]> {
-    const skuWeekData = await this.getActiveWeekData();
+    const skuWeekData = await this.getAllWeekData();
 
     // Grup berdasarkan week
     const weekGroups = new Map<number, any[]>();
@@ -312,53 +281,22 @@ export class WorkableBondingService {
       weekGroups.get(week)!.push(item);
     }
 
-    // Cari week terendah yang belum ada cuttingnya
-    const plannedWeeks = new Set<number>();
-    const planned = await this.getPlannedWeeks();
-    for (const p of planned) {
-      plannedWeeks.add(Number(p.week));
+    // Cari week terendah
+    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    const lowestWeek = sortedWeeks[0] || null;
+
+    if (lowestWeek === null) {
+      return []; // Tidak ada week
     }
 
-    const existingWeeksWithCutting = new Set<number>();
-    for (const item of skuWeekData) {
-      if (item.entries && item.entries.length > 0) { // Jika ada entri cutting
-        existingWeeksWithCutting.add(item.week);
-      }
-    }
-
-    let activeWeek = null;
-    const sortedPlannedWeeks = Array.from(plannedWeeks).sort((a, b) => a - b);
-    for (const week of sortedPlannedWeeks) {
-      if (!existingWeeksWithCutting.has(week)) {
-        activeWeek = week;
-        break;
-      }
-    }
-
-    // Jika semua week sudah ada cuttingnya, cari week terendah yang belum completed
-    if (activeWeek === null) {
-      const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
-      for (const week of sortedWeeks) {
-        const items = weekGroups.get(week)!;
-        const hasActive = items.some(item => item.status !== 'Completed');
-        if (hasActive) {
-          activeWeek = week;
-          break;
-        }
-      }
-    }
-
-    if (activeWeek === null) {
-      return []; // Tidak ada week aktif
-    }
-
-    const activeItems = weekGroups.get(activeWeek)!.filter(item => item.status !== 'Completed');
+    // Ambil semua item dari week terendah
+    const itemsInLowestWeek = weekGroups.get(lowestWeek)!.filter(item => item.status !== 'Completed');
 
     const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
     const emptyLayers = { 'Layer 1': 0, 'Layer 2': 0, 'Layer 3': 0, 'Layer 4': 0 };
     const result: any[] = [];
 
-    for (const item of activeItems) {
+    for (const item of itemsInLowestWeek) {
       const { entries, quantityOrder, bonding: totalBonding, remainProduksi, status, remarks } = item;
 
       // Hitung per layer
