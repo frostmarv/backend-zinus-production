@@ -233,6 +233,8 @@ export class CuttingService {
 
       const entryEntities = dto.entries.map((entry) => {
         const quantityProduksi = parseNumber(entry.quantityProduksi) || 0;
+        const isHole = !!entry.isHole; // Pastikan boolean
+
         return this.productionCuttingEntryRepo.create({
           customer: entry.customer,
           poNumber: entry.poNumber,
@@ -242,11 +244,12 @@ export class CuttingService {
           quantityOrder: parseNumber(entry.quantityOrder) || 0,
           quantityProduksi: quantityProduksi,
           week: entry.week || null,
-          isHole: entry.isHole || false,
+          isHole: isHole,
           foamingDate: entry.foamingDate || null,
-          foamingDateCompleted: !!entry.foamingDate ? false : false,
+          foamingDateCompleted: entry.foamingDate ? false : false,
           quantityHole: 0,
-          quantityHoleRemain: quantityProduksi,
+          // 🔽 PERBAIKAN UTAMA: hanya set remain jika hole
+          quantityHoleRemain: isHole ? quantityProduksi : 0,
           productionCuttingRecord: savedRecord,
         });
       });
@@ -335,6 +338,11 @@ export class CuttingService {
       throw new NotFoundException(
         `Entry dengan ID "${entryId}" tidak ditemukan`,
       );
+    }
+
+    // 🔽 Tambahkan validasi: hanya boleh update jika isHole = true
+    if (!entry.isHole) {
+      throw new BadRequestException('Tidak dapat memperbarui quantity hole untuk entri non-hole');
     }
 
     const newQuantityHole = entry.quantityHole + quantityHole;

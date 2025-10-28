@@ -116,15 +116,15 @@ export class WorkableBondingService {
         const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remainProduksi = Number(active.quantityOrder) - totalBonding;
 
-        const totalHoleRemain = allEntries.reduce((sum, e) => {
-          return sum + (Number(e.quantity_hole_remain) || 0);
-        }, 0);
+        // 🔽 PERBAIKAN: Hanya hitung hole remain dari entri yang is_hole = true
+        const totalHoleRemain = allEntries
+          .filter(e => e.is_hole)
+          .reduce((sum, e) => sum + (Number(e.quantity_hole_remain) || 0), 0);
 
-        const totalFoaming = allEntries.reduce((sum, e) => {
-          if (e.foaming_date && !e.foaming_date_completed)
-            return sum + (Number(e.cutting_qty) || 0);
-          return sum;
-        }, 0);
+        // 🔽 PERBAIKAN: Hanya hitung foaming dari entri yang foaming aktif
+        const totalFoaming = allEntries
+          .filter(e => e.foaming_date && !e.foaming_date_completed)
+          .reduce((sum, e) => sum + (Number(e.cutting_qty) || 0), 0);
 
         let workable = Math.max(minNetQty - totalBonding, 0);
 
@@ -144,10 +144,11 @@ export class WorkableBondingService {
             statuses.push(`Foaming Date: ${foamingDateStr}`);
           }
 
+          // 🔽 PERBAIKAN: Hanya tampilkan hole jika benar-benar ada
           if (totalHoleRemain > 0) {
-            const totalHoleQty = allEntries.reduce((sum, e) => {
-              return sum + (Number(e.quantity_hole) || 0);
-            }, 0);
+            const totalHoleQty = allEntries
+              .filter(e => e.is_hole)
+              .reduce((sum, e) => sum + (Number(e.quantity_hole) || 0), 0);
             statuses.push(
               `Hole Processing: ${totalHoleQty - totalHoleRemain}/${totalHoleQty} done`,
             );
@@ -167,6 +168,15 @@ export class WorkableBondingService {
           remarks = statuses.join(', ');
         }
 
+        const status =
+          remainProduksi <= 0
+            ? 'Completed'
+            : totalFoaming > 0 || totalHoleRemain > 0
+              ? 'Halted'
+              : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0 && !e.is_hole && !e.foaming_date)
+                ? 'Running'
+                : 'Not Started';
+
         result.push({
           week: active.week,
           shipToName: active.shipToName,
@@ -175,14 +185,7 @@ export class WorkableBondingService {
           workable: this.formatNumberOrDash(workable),
           bonding: this.formatNumberOrDash(totalBonding),
           'Remain Produksi': this.formatNumberOrDash(remainProduksi),
-          status:
-            remainProduksi <= 0
-              ? 'Completed'
-              : totalFoaming > 0 || totalHoleRemain > 0
-                ? 'Halted'
-                : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0)
-                  ? 'Running'
-                  : 'Not Started',
+          status,
           remarks: remarks || '-',
         });
       }
@@ -245,7 +248,6 @@ export class WorkableBondingService {
       if (active) {
         const allEntries = active.entries;
 
-        // 🔽 LOGIKA YANG SAMA DENGAN getWorkableBonding()
         const availableEntries = allEntries.filter((e) => {
           const isFoaming = e.foaming_date && !e.foaming_date_completed;
           const isHole = e.is_hole;
@@ -260,15 +262,15 @@ export class WorkableBondingService {
         const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
         const remainProduksi = Number(active.quantityOrder) - totalBonding;
 
-        const totalHoleRemain = allEntries.reduce((sum, e) => {
-          return sum + (Number(e.quantity_hole_remain) || 0);
-        }, 0);
+        // 🔽 PERBAIKAN: Hanya hitung hole remain dari entri yang is_hole = true
+        const totalHoleRemain = allEntries
+          .filter(e => e.is_hole)
+          .reduce((sum, e) => sum + (Number(e.quantity_hole_remain) || 0), 0);
 
-        const totalFoaming = allEntries.reduce((sum, e) => {
-          if (e.foaming_date && !e.foaming_date_completed)
-            return sum + (Number(e.cutting_qty) || 0);
-          return sum;
-        }, 0);
+        // 🔽 PERBAIKAN: Hanya hitung foaming dari entri yang foaming aktif
+        const totalFoaming = allEntries
+          .filter(e => e.foaming_date && !e.foaming_date_completed)
+          .reduce((sum, e) => sum + (Number(e.cutting_qty) || 0), 0);
 
         let workable = Math.max(minNetQty - totalBonding, 0);
 
@@ -289,9 +291,9 @@ export class WorkableBondingService {
           }
 
           if (totalHoleRemain > 0) {
-            const totalHoleQty = allEntries.reduce((sum, e) => {
-              return sum + (Number(e.quantity_hole) || 0);
-            }, 0);
+            const totalHoleQty = allEntries
+              .filter(e => e.is_hole)
+              .reduce((sum, e) => sum + (Number(e.quantity_hole) || 0), 0);
             statuses.push(
               `Hole Processing: ${totalHoleQty - totalHoleRemain}/${totalHoleQty} done`,
             );
@@ -311,7 +313,6 @@ export class WorkableBondingService {
           remarks = statuses.join(', ');
         }
 
-        // 🔽 Hitung layer hanya untuk ditampilkan
         const layerNetQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
         const layerBondingQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
         const layerHoleQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
@@ -340,23 +341,25 @@ export class WorkableBondingService {
           layers[layerNames[idx]] = this.formatNumberOrDash(layerWorkable);
         }
 
+        const status =
+          remainProduksi <= 0
+            ? 'Completed'
+            : totalFoaming > 0 || totalHoleRemain > 0
+              ? 'Halted'
+              : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0 && !e.is_hole && !e.foaming_date)
+                ? 'Running'
+                : 'Not Started';
+
         result.push({
           shipToName: active.shipToName,
           sku: active.sku,
           week: active.week,
           quantityOrder: this.formatNumberOrDash(active.quantityOrder),
           ...layers,
-          workable: this.formatNumberOrDash(workable), // 🔽 SAMA DENGAN HALAMAN UTAMA
+          workable: this.formatNumberOrDash(workable),
           bonding: this.formatNumberOrDash(totalBonding),
           'Remain Produksi': this.formatNumberOrDash(remainProduksi),
-          status:
-            remainProduksi <= 0
-              ? 'Completed'
-              : totalFoaming > 0 || totalHoleRemain > 0
-                ? 'Halted'
-                : allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0)
-                  ? 'Running'
-                  : 'Not Started',
+          status,
           remarks: remarks || '-',
         });
       }
@@ -497,12 +500,12 @@ export class WorkableBondingService {
           shipToName,
           sku,
           week: Number(week),
-          quantityOrder: '-', // Tidak ada di reject, jadi tetap '-'
+          quantityOrder: '-',
           'NG Layer 1': this.formatNumberOrDash(layerData[1].ng),
           'NG Layer 2': this.formatNumberOrDash(layerData[2].ng),
           'NG Layer 3': this.formatNumberOrDash(layerData[3].ng),
           'NG Layer 4': this.formatNumberOrDash(layerData[4].ng),
-          'NG Hole': '-', // Hole tidak dipisah di query ini → bisa diabaikan atau dihitung terpisah jika perlu
+          'NG Hole': '-',
           'Replacement Layer 1': this.formatNumberOrDash(layerData[1].rep),
           'Replacement Layer 2': this.formatNumberOrDash(layerData[2].rep),
           'Replacement Layer 3': this.formatNumberOrDash(layerData[3].rep),
