@@ -5,7 +5,6 @@ import { DataSource } from 'typeorm';
 export class WorkableBondingService {
   constructor(private dataSource: DataSource) {}
 
-  // 🔽 Helper: Format angka → "-" jika 0, null, undefined, atau NaN
   private formatNumberOrDash(value: any): string | number {
     const num = Number(value);
     if (isNaN(num) || num === 0) {
@@ -246,6 +245,73 @@ export class WorkableBondingService {
       if (active) {
         const allEntries = active.entries;
 
+        // 🔽 LOGIKA YANG SAMA DENGAN getWorkableBonding()
+        const availableEntries = allEntries.filter((e) => {
+          const isFoaming = e.foaming_date && !e.foaming_date_completed;
+          const isHole = e.is_hole;
+          return !isFoaming && !isHole;
+        });
+
+        const netQtys = availableEntries
+          .map((e) => Number(e.net_qty) || 0)
+          .filter((v) => typeof v === 'number' && !isNaN(v)) as number[];
+        const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
+
+        const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
+        const remainProduksi = Number(active.quantityOrder) - totalBonding;
+
+        const totalHoleRemain = allEntries.reduce((sum, e) => {
+          return sum + (Number(e.quantity_hole_remain) || 0);
+        }, 0);
+
+        const totalFoaming = allEntries.reduce((sum, e) => {
+          if (e.foaming_date && !e.foaming_date_completed)
+            return sum + (Number(e.cutting_qty) || 0);
+          return sum;
+        }, 0);
+
+        let workable = Math.max(minNetQty - totalBonding, 0);
+
+        let remarks = '';
+        if (remainProduksi <= 0) {
+          remarks = 'Bonding completed';
+        } else {
+          const statuses = [];
+
+          const activeFoamingEntries = allEntries.filter(
+            (e) => e.foaming_date && !e.foaming_date_completed,
+          );
+          if (activeFoamingEntries.length > 0) {
+            const foamingDateStr = activeFoamingEntries[0].foaming_date
+              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString('id-ID')
+              : 'TBD';
+            statuses.push(`Foaming Date: ${foamingDateStr}`);
+          }
+
+          if (totalHoleRemain > 0) {
+            const totalHoleQty = allEntries.reduce((sum, e) => {
+              return sum + (Number(e.quantity_hole) || 0);
+            }, 0);
+            statuses.push(
+              `Hole Processing: ${totalHoleQty - totalHoleRemain}/${totalHoleQty} done`,
+            );
+          }
+
+          if (
+            statuses.length === 0 &&
+            allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0 && !e.foaming_date && !e.is_hole)
+          ) {
+            statuses.push('Cutting in progress');
+          }
+
+          if (statuses.length === 0) {
+            statuses.push('Waiting for cutting');
+          }
+
+          remarks = statuses.join(', ');
+        }
+
+        // 🔽 Hitung layer hanya untuk ditampilkan
         const layerNetQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
         const layerBondingQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
         const layerHoleQtys: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
@@ -266,57 +332,12 @@ export class WorkableBondingService {
         }
 
         const layers: Record<string, string | number> = { ...emptyLayers };
-        let minWorkable = Infinity;
         for (let idx = 1; idx <= 4; idx++) {
           const net = layerNetQtys[idx];
           const bonding = layerBondingQtys[idx];
           const holeRemain = layerHoleQtys[idx];
           const layerWorkable = holeRemain === 0 ? Math.max(net - bonding, 0) : 0;
           layers[layerNames[idx]] = this.formatNumberOrDash(layerWorkable);
-          if (layerWorkable < minWorkable) minWorkable = layerWorkable;
-        }
-
-        const totalBonding = allEntries.reduce((sum, e) => sum + (Number(e.bonding_qty) || 0), 0);
-        const remainProduksi = Number(active.quantityOrder) - totalBonding;
-        const totalHoleRemain = Object.values(layerHoleQtys).reduce((sum, v) => sum + v, 0);
-        const totalHoleProcessed = allEntries.reduce((sum, e) => {
-          if (e.is_hole) return sum + ((Number(e.quantity_hole) || 0) - (Number(e.quantity_hole_remain) || 0));
-          return sum;
-        }, 0);
-        const totalFoaming = allEntries.reduce((sum, e) => {
-          if (e.foaming_date && !e.foaming_date_completed) return sum + (Number(e.cutting_qty) || 0);
-          return sum;
-        }, 0);
-
-        let remarks = '';
-        if (remainProduksi <= 0) {
-          remarks = 'Bonding completed';
-        } else {
-          const statuses = [];
-          const activeFoamingEntries = allEntries.filter(
-            (e) => e.foaming_date && !e.foaming_date_completed,
-          );
-          if (activeFoamingEntries.length > 0) {
-            const foamingDateStr = activeFoamingEntries[0].foaming_date
-              ? new Date(activeFoamingEntries[0].foaming_date).toLocaleString('id-ID')
-              : 'TBD';
-            statuses.push(`Foaming Date: ${foamingDateStr}`);
-          }
-          if (totalHoleRemain > 0) {
-            statuses.push(
-              `Hole Processing: ${totalHoleProcessed}/${totalHoleProcessed + totalHoleRemain} done`,
-            );
-          }
-          if (
-            statuses.length === 0 &&
-            allEntries.some((e) => (Number(e.cutting_qty) || 0) > 0 && !e.foaming_date && !e.is_hole)
-          ) {
-            statuses.push('Cutting in progress');
-          }
-          if (statuses.length === 0) {
-            statuses.push('Waiting for cutting');
-          }
-          remarks = statuses.join(', ');
         }
 
         result.push({
@@ -325,7 +346,7 @@ export class WorkableBondingService {
           week: active.week,
           quantityOrder: this.formatNumberOrDash(active.quantityOrder),
           ...layers,
-          workable: this.formatNumberOrDash(minWorkable === Infinity ? 0 : minWorkable),
+          workable: this.formatNumberOrDash(workable), // 🔽 SAMA DENGAN HALAMAN UTAMA
           bonding: this.formatNumberOrDash(totalBonding),
           'Remain Produksi': this.formatNumberOrDash(remainProduksi),
           status:
@@ -459,7 +480,6 @@ export class WorkableBondingService {
           });
         }
       } else {
-        // Kelompokkan per layer
         const layerData: Record<number, { ng: number; rep: number }> = {
           1: { ng: 0, rep: 0 },
           2: { ng: 0, rep: 0 },
@@ -492,7 +512,6 @@ export class WorkableBondingService {
       }
     }
 
-    // Urutkan berdasarkan status dari bonding
     const bondingStatusMap = new Map<string, string>();
     for (const item of bondingData) {
       bondingStatusMap.set(`${item.shipToName}|${item.sku}`, item.status);
