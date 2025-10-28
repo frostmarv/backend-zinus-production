@@ -37,15 +37,23 @@ export class WorkableBondingService {
     // Build full planned map: key = shipTo|sku|week
     const plannedMap = new Map<string, number>();
     const plannedByWeek = new Map<number, any[]>();
+    const skuWeekToShipTo = new Map<string, string>(); // 👈 mapping untuk bonding
+
     for (const p of planned) {
       const key = `${p.shipToName}|${p.sku}|${p.week}`;
       const qty = Number(p.quantityOrder) || 0;
       plannedMap.set(key, qty);
       if (!plannedByWeek.has(p.week)) plannedByWeek.set(p.week, []);
       plannedByWeek.get(p.week)!.push({ ...p, quantityOrder: qty });
+
+      // Simpan mapping sku+week -> shipTo (asumsi 1 SKU = 1 customer per week)
+      const skuWeekKey = `${p.sku}|${p.week}`;
+      if (!skuWeekToShipTo.has(skuWeekKey)) {
+        skuWeekToShipTo.set(skuWeekKey, p.shipToName);
+      }
     }
 
-    // Ambil data cutting — tetap sama
+    // Ambil data cutting — tetap valid
     const cuttingEntries = await this.dataSource.query(`
       SELECT 
         c.customer_name AS "shipToName",
@@ -83,26 +91,23 @@ export class WorkableBondingService {
       ORDER BY c.customer_name, e.sku, e.week, "layer_index"
     `);
 
-    // ⚠️ REVISI: Ambil bonding per (shipTo, sku, week) — bukan hanya (sku, week)
-    const bondingData = await this.dataSource.query(`
-      SELECT 
-        c.customer_name AS "shipToName",
-        bs.sku,
-        bs.week,
-        SUM(bs.quantity_produksi) AS total
-      FROM bonding_summary bs
-      JOIN production_order_items poi ON bs.sku = p.sku AND poi.week_number::TEXT = bs.week
-      JOIN products p ON poi.product_product_id = p.product_id
-      JOIN production_orders po ON poi.order_order_id = po.order_id
-      JOIN customers c ON po.customer_customer_id = c.customer_id
-      WHERE p.category = 'FOAM'
-      GROUP BY c.customer_name, bs.sku, bs.week
+    // ✅ Ambil bonding data MENTAH (tanpa JOIN ilegal)
+    const rawBondingData = await this.dataSource.query(`
+      SELECT sku, week, SUM(quantity_produksi) AS total
+      FROM bonding_summary
+      GROUP BY sku, week
     `);
 
+    // Bangun bondingMap dengan shipToName dari mapping
     const bondingMap = new Map<string, number>();
-    for (const row of bondingData) {
-      const key = `${row.shipToName}|${row.sku}|${row.week}`;
-      bondingMap.set(key, Number(row.total) || 0);
+    for (const row of rawBondingData) {
+      const skuWeekKey = `${row.sku}|${row.week}`;
+      const shipToName = skuWeekToShipTo.get(skuWeekKey);
+      if (shipToName) {
+        const fullKey = `${shipToName}|${row.sku}|${row.week}`;
+        bondingMap.set(fullKey, Number(row.total) || 0);
+      }
+      // Jika tidak ada mapping, abaikan (tidak ada planned order)
     }
 
     // Normalisasi cutting entries
@@ -135,7 +140,7 @@ export class WorkableBondingService {
       const [shipToName, sku, weekStr] = key.split('|');
       const week = Number(weekStr);
       const entries = cuttingGroups.get(key) || [];
-      const totalBonding = bondingMap.get(key) || 0; // ⚠️ SEKARANG PAKAI KEY YANG SAMA!
+      const totalBonding = bondingMap.get(key) || 0; // ✅ Gunakan key lengkap
       const remainProduksi = qtyOrder - totalBonding;
       const isCompleted = remainProduksi <= 0;
 
@@ -148,7 +153,6 @@ export class WorkableBondingService {
       const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
       const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
 
-      // ⚠️ REVISI: Agregasi net_qty untuk workable — ambil min dari semua entri normal
       const netQtys = normalEntries.map(e => e.net_qty).filter(q => q > 0);
       const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
       const workable = Math.max(minNetQty - totalBonding, 0);
@@ -198,24 +202,16 @@ export class WorkableBondingService {
     const { allItems, plannedByWeek } = await this.getAllWeekData();
     if (allItems.length === 0) return [];
 
-    // Urutkan semua item berdasarkan week, lalu shipTo, sku
     allItems.sort((a, b) => a.week - b.week || a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku));
 
-    // Cari week terendah yang memiliki planned item
     const sortedWeeks = Array.from(plannedByWeek.keys()).sort((a, b) => a - b);
     const firstWeek = sortedWeeks[0];
     if (firstWeek === undefined) return [];
 
-    // Ambil semua item dari week pertama (bukan hanya yang ada cutting!)
     const initialItems = allItems.filter(item => item.week === firstWeek);
     const initialCount = initialItems.length;
-
-    // Hitung berapa banyak yang sudah completed di week pertama
     const completedInFirstWeek = initialItems.filter(item => item.status === 'Completed').length;
 
-    // Tentukan week target:
-    // - Jika belum ada yang completed → tetap di firstWeek
-    // - Jika ada N completed → pindah ke week = firstWeek + 1, dan ambil N item dari week tersebut
     let targetWeek: number;
     let targetItemCount: number;
 
@@ -227,15 +223,11 @@ export class WorkableBondingService {
       targetItemCount = completedInFirstWeek;
     }
 
-    // Ambil semua item dari targetWeek (yang planned), urutkan, ambil sebanyak targetItemCount
     const itemsInTargetWeek = allItems
       .filter(item => item.week === targetWeek)
-      .sort((a, b) => 
-        a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku)
-      )
+      .sort((a, b) => a.shipToName.localeCompare(b.shipToName) || a.sku.localeCompare(b.sku))
       .slice(0, targetItemCount);
 
-    // Gabungkan: sisa item dari firstWeek yang belum completed + item baru dari targetWeek
     const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
     const combined = [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
