@@ -181,6 +181,51 @@ export class WorkableBondingService {
       });
     }
 
+    // Sekarang tambahkan SKU yang di-plan tapi belum ada cuttingnya
+    const plannedWeeks = new Set<number>();
+    for (const p of planned) {
+      plannedWeeks.add(Number(p.week));
+    }
+
+    const existingWeeksWithCutting = new Set<number>();
+    for (const item of skuWeekData) {
+      existingWeeksWithCutting.add(item.week);
+    }
+
+    // Cari week terendah yang belum ada cuttingnya
+    const sortedPlannedWeeks = Array.from(plannedWeeks).sort((a, b) => a - b);
+    let firstWeekWithoutCutting = null;
+    for (const week of sortedPlannedWeeks) {
+      if (!existingWeeksWithCutting.has(week)) {
+        firstWeekWithoutCutting = week;
+        break;
+      }
+    }
+
+    // Jika ada week yang belum ada cuttingnya, tambahkan ke skuWeekData
+    if (firstWeekWithoutCutting !== null) {
+      for (const p of planned) {
+        if (Number(p.week) === firstWeekWithoutCutting) {
+          const key = `${p.shipToName}|${p.sku}|${p.week}`;
+          const quantityOrder = Number(p.quantityOrder) || 0;
+          const status = 'Not Started';
+          const item = {
+            week: Number(p.week),
+            shipToName: p.shipToName,
+            sku: p.sku,
+            quantityOrder,
+            workable: 0,
+            bonding: 0,
+            remainProduksi: quantityOrder,
+            status,
+            remarks: 'Waiting for cutting',
+            entries: [] as any[],
+          };
+          skuWeekData.push(item);
+        }
+      }
+    }
+
     return skuWeekData;
   }
 
@@ -197,15 +242,39 @@ export class WorkableBondingService {
       weekGroups.get(week)!.push(item);
     }
 
-    // Cari week terendah yang masih ada item aktif (bukan completed semua)
-    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    // Cari week terendah yang belum ada cuttingnya
+    const plannedWeeks = new Set<number>();
+    const planned = await this.getPlannedWeeks();
+    for (const p of planned) {
+      plannedWeeks.add(Number(p.week));
+    }
+
+    const existingWeeksWithCutting = new Set<number>();
+    for (const item of skuWeekData) {
+      if (item.entries && item.entries.length > 0) { // Jika ada entri cutting
+        existingWeeksWithCutting.add(item.week);
+      }
+    }
+
     let activeWeek = null;
-    for (const week of sortedWeeks) {
-      const items = weekGroups.get(week)!;
-      const hasActive = items.some(item => item.status !== 'Completed');
-      if (hasActive) {
+    const sortedPlannedWeeks = Array.from(plannedWeeks).sort((a, b) => a - b);
+    for (const week of sortedPlannedWeeks) {
+      if (!existingWeeksWithCutting.has(week)) {
         activeWeek = week;
         break;
+      }
+    }
+
+    // Jika semua week sudah ada cuttingnya, cari week terendah yang belum completed
+    if (activeWeek === null) {
+      const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+      for (const week of sortedWeeks) {
+        const items = weekGroups.get(week)!;
+        const hasActive = items.some(item => item.status !== 'Completed');
+        if (hasActive) {
+          activeWeek = week;
+          break;
+        }
       }
     }
 
@@ -243,15 +312,39 @@ export class WorkableBondingService {
       weekGroups.get(week)!.push(item);
     }
 
-    // Cari week terendah yang masih ada item aktif (bukan completed semua)
-    const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+    // Cari week terendah yang belum ada cuttingnya
+    const plannedWeeks = new Set<number>();
+    const planned = await this.getPlannedWeeks();
+    for (const p of planned) {
+      plannedWeeks.add(Number(p.week));
+    }
+
+    const existingWeeksWithCutting = new Set<number>();
+    for (const item of skuWeekData) {
+      if (item.entries && item.entries.length > 0) { // Jika ada entri cutting
+        existingWeeksWithCutting.add(item.week);
+      }
+    }
+
     let activeWeek = null;
-    for (const week of sortedWeeks) {
-      const items = weekGroups.get(week)!;
-      const hasActive = items.some(item => item.status !== 'Completed');
-      if (hasActive) {
+    const sortedPlannedWeeks = Array.from(plannedWeeks).sort((a, b) => a - b);
+    for (const week of sortedPlannedWeeks) {
+      if (!existingWeeksWithCutting.has(week)) {
         activeWeek = week;
         break;
+      }
+    }
+
+    // Jika semua week sudah ada cuttingnya, cari week terendah yang belum completed
+    if (activeWeek === null) {
+      const sortedWeeks = Array.from(weekGroups.keys()).sort((a, b) => a - b);
+      for (const week of sortedWeeks) {
+        const items = weekGroups.get(week)!;
+        const hasActive = items.some(item => item.status !== 'Completed');
+        if (hasActive) {
+          activeWeek = week;
+          break;
+        }
       }
     }
 
