@@ -45,7 +45,7 @@ export class WorkableBondingService {
       plannedByWeek.get(p.week)!.push({ ...p, quantityOrder: qty });
     }
 
-    // Ambil data cutting dan bonding seperti sebelumnya
+    // Ambil data cutting — tetap sama
     const cuttingEntries = await this.dataSource.query(`
       SELECT 
         c.customer_name AS "shipToName",
@@ -83,14 +83,26 @@ export class WorkableBondingService {
       ORDER BY c.customer_name, e.sku, e.week, "layer_index"
     `);
 
-    const bondingMap = new Map<string, number>();
+    // ⚠️ REVISI: Ambil bonding per (shipTo, sku, week) — bukan hanya (sku, week)
     const bondingData = await this.dataSource.query(`
-      SELECT sku, week, SUM(quantity_produksi) AS total
-      FROM bonding_summary
-      GROUP BY sku, week
+      SELECT 
+        c.customer_name AS "shipToName",
+        bs.sku,
+        bs.week,
+        SUM(bs.quantity_produksi) AS total
+      FROM bonding_summary bs
+      JOIN production_order_items poi ON bs.sku = p.sku AND poi.week_number::TEXT = bs.week
+      JOIN products p ON poi.product_product_id = p.product_id
+      JOIN production_orders po ON poi.order_order_id = po.order_id
+      JOIN customers c ON po.customer_customer_id = c.customer_id
+      WHERE p.category = 'FOAM'
+      GROUP BY c.customer_name, bs.sku, bs.week
     `);
+
+    const bondingMap = new Map<string, number>();
     for (const row of bondingData) {
-      bondingMap.set(`${row.sku}|${row.week}`, Number(row.total) || 0);
+      const key = `${row.shipToName}|${row.sku}|${row.week}`;
+      bondingMap.set(key, Number(row.total) || 0);
     }
 
     // Normalisasi cutting entries
@@ -123,7 +135,7 @@ export class WorkableBondingService {
       const [shipToName, sku, weekStr] = key.split('|');
       const week = Number(weekStr);
       const entries = cuttingGroups.get(key) || [];
-      const totalBonding = bondingMap.get(`${sku}|${week}`) || 0;
+      const totalBonding = bondingMap.get(key) || 0; // ⚠️ SEKARANG PAKAI KEY YANG SAMA!
       const remainProduksi = qtyOrder - totalBonding;
       const isCompleted = remainProduksi <= 0;
 
@@ -136,6 +148,7 @@ export class WorkableBondingService {
       const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
       const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
 
+      // ⚠️ REVISI: Agregasi net_qty untuk workable — ambil min dari semua entri normal
       const netQtys = normalEntries.map(e => e.net_qty).filter(q => q > 0);
       const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
       const workable = Math.max(minNetQty - totalBonding, 0);
@@ -242,7 +255,6 @@ export class WorkableBondingService {
   }
 
   async getWorkableDetail(): Promise<any[]> {
-    // Untuk detail, kita gunakan logika yang sama seperti getWorkableBonding untuk menentukan item aktif
     const { allItems, plannedByWeek } = await this.getAllWeekData();
     if (allItems.length === 0) return [];
 
@@ -320,7 +332,6 @@ export class WorkableBondingService {
     return this.sortResult(result);
   }
 
-  // getWorkableReject tetap sama (gunakan active items dari getWorkableBonding)
   async getWorkableReject(): Promise<any[]> {
     const bondingData = await this.getWorkableBonding();
     if (bondingData.length === 0) return [];
@@ -330,8 +341,6 @@ export class WorkableBondingService {
       activeWeeks.set(`${row.shipToName}|${row.sku}`, row.week);
     }
 
-    // ... (sisa logika getWorkableReject tetap sama seperti sebelumnya)
-    // Karena Anda bilang "tetap sama", kita pertahankan bagian ini utuh
     const ngData = await this.dataSource.query(`
       SELECT 
         br.sku,
