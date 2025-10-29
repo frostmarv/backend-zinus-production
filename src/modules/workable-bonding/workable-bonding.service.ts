@@ -15,10 +15,11 @@ export class WorkableBondingService {
   }
 
   private async getPlannedWeeks(): Promise<any[]> {
+    // ✅ Normalisasi customer_name dan sku di query
     return await this.dataSource.query(`
       SELECT 
-        c.customer_name AS "shipToName",
-        p.sku,
+        TRIM(c.customer_name) AS "shipToName",
+        UPPER(TRIM(p.sku)) AS "sku",
         poi.week_number AS "week",
         SUM(poi.planned_qty) AS "quantityOrder"
       FROM production_order_items poi
@@ -26,8 +27,8 @@ export class WorkableBondingService {
       JOIN customers c ON po.customer_customer_id = c.customer_id
       JOIN products p ON poi.product_product_id = p.product_id
       WHERE poi.week_number IS NOT NULL AND p.category = 'FOAM'
-      GROUP BY c.customer_name, p.sku, poi.week_number
-      ORDER BY c.customer_name, p.sku, poi.week_number
+      GROUP BY TRIM(c.customer_name), UPPER(TRIM(p.sku)), poi.week_number
+      ORDER BY TRIM(c.customer_name), UPPER(TRIM(p.sku)), poi.week_number
     `);
   }
 
@@ -40,24 +41,29 @@ export class WorkableBondingService {
     const skuWeekToShipTo = new Map<string, string>(); // 👈 mapping untuk bonding
 
     for (const p of planned) {
-      const key = `${p.shipToName}|${p.sku}|${p.week}`;
+      // ✅ Normalisasi data di sini
+      const shipToName = p.shipToName.trim();
+      const sku = p.sku.trim().toUpperCase();
+      const week = p.week;
+
+      const key = `${shipToName}|${sku}|${week}`;
       const qty = Number(p.quantityOrder) || 0;
       plannedMap.set(key, qty);
-      if (!plannedByWeek.has(p.week)) plannedByWeek.set(p.week, []);
-      plannedByWeek.get(p.week)!.push({ ...p, quantityOrder: qty });
+      if (!plannedByWeek.has(week)) plannedByWeek.set(week, []);
+      plannedByWeek.get(week)!.push({ ...p, quantityOrder: qty });
 
       // Simpan mapping sku+week -> shipTo (asumsi 1 SKU = 1 customer per week)
-      const skuWeekKey = `${p.sku}|${p.week}`;
+      const skuWeekKey = `${sku}|${week}`;
       if (!skuWeekToShipTo.has(skuWeekKey)) {
-        skuWeekToShipTo.set(skuWeekKey, p.shipToName);
+        skuWeekToShipTo.set(skuWeekKey, shipToName);
       }
     }
 
     // Ambil data cutting — tetap valid
     const cuttingEntries = await this.dataSource.query(`
       SELECT 
-        c.customer_name AS "shipToName",
-        e.sku,
+        TRIM(c.customer_name) AS "shipToName",  -- ✅ Normalisasi
+        UPPER(TRIM(e.sku)) AS "sku",           -- ✅ Normalisasi
         e.week,
         COALESCE(e.s_code, 'MAIN') AS "s_code",
         COALESCE(al.layer_index, 1) AS "layer_index",
@@ -69,7 +75,7 @@ export class WorkableBondingService {
         e.quantity_hole,
         e.quantity_hole_remain
       FROM production_cutting_entries e
-      JOIN products p ON e.sku = p.sku
+      JOIN products p ON UPPER(TRIM(e.sku)) = UPPER(TRIM(p.sku))  -- ✅ Normalisasi
       JOIN production_order_items poi ON p.product_id = poi.product_product_id AND poi.week_number::TEXT = e.week
       JOIN production_orders po ON poi.order_order_id = po.order_id
       JOIN customers c ON po.customer_customer_id = c.customer_id
@@ -86,25 +92,29 @@ export class WorkableBondingService {
           AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
         WHERE br.status != 'CANCELLED'
         GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
-      ) ng ON e.sku = ng.sku AND COALESCE(e.s_code, 'MAIN') = ng.s_code
+      ) ng ON UPPER(TRIM(e.sku)) = UPPER(TRIM(ng.sku)) AND COALESCE(e.s_code, 'MAIN') = ng.s_code  -- ✅ Normalisasi
       WHERE p.category = 'FOAM' AND e.week IS NOT NULL
-      ORDER BY c.customer_name, e.sku, e.week, "layer_index"
+      ORDER BY TRIM(c.customer_name), UPPER(TRIM(e.sku)), e.week, "layer_index"
     `);
 
     // ✅ Ambil bonding data MENTAH (tanpa JOIN ilegal)
     const rawBondingData = await this.dataSource.query(`
-      SELECT sku, week, SUM(quantity_produksi) AS total
+      SELECT 
+        UPPER(TRIM(sku)) AS "sku",  -- ✅ Normalisasi
+        week, 
+        SUM(quantity_produksi) AS total
       FROM bonding_summary
-      GROUP BY sku, week
+      GROUP BY UPPER(TRIM(sku)), week
     `);
 
     // Bangun bondingMap dengan shipToName dari mapping
     const bondingMap = new Map<string, number>();
     for (const row of rawBondingData) {
-      const skuWeekKey = `${row.sku}|${row.week}`;
+      const sku = row.sku.trim().toUpperCase(); // ✅ Pastikan uppercase
+      const skuWeekKey = `${sku}|${row.week}`;
       const shipToName = skuWeekToShipTo.get(skuWeekKey);
       if (shipToName) {
-        const fullKey = `${shipToName}|${row.sku}|${row.week}`;
+        const fullKey = `${shipToName}|${sku}|${row.week}`;
         bondingMap.set(fullKey, Number(row.total) || 0);
       }
       // Jika tidak ada mapping, abaikan (tidak ada planned order)
@@ -112,8 +122,8 @@ export class WorkableBondingService {
 
     // Normalisasi cutting entries
     const normalizedEntries = cuttingEntries.map(row => ({
-      shipToName: row.shipToName,
-      sku: row.sku,
+      shipToName: row.shipToName.trim(),
+      sku: row.sku.trim().toUpperCase(), // ✅ Normalisasi
       week: Number(row.week),
       s_code: row.s_code,
       layer_index: Number(row.layer_index) || 1,
@@ -129,7 +139,7 @@ export class WorkableBondingService {
     // Grup cutting entries by key
     const cuttingGroups = new Map<string, any[]>();
     for (const entry of normalizedEntries) {
-      const key = `${entry.shipToName}|${entry.sku}|${entry.week}`;
+      const key = `${entry.shipToName}|${entry.sku}|${entry.week}`; // ✅ Sudah dinormalisasi
       if (!cuttingGroups.has(key)) cuttingGroups.set(key, []);
       cuttingGroups.get(key)!.push(entry);
     }
