@@ -14,8 +14,12 @@ export class WorkableBondingService {
     return num;
   }
 
+  // 🔧 Normalisasi string: hapus semua whitespace berlebih, trim, uppercase
+  private normalize(val: string): string {
+    return val.replace(/\s+/g, ' ').trim().toUpperCase();
+  }
+
   private async getPlannedWeeks(): Promise<any[]> {
-    // ✅ Normalisasi customer_name dan sku di query
     return await this.dataSource.query(`
       SELECT 
         TRIM(c.customer_name) AS "shipToName",
@@ -35,35 +39,34 @@ export class WorkableBondingService {
   private async getAllWeekData() {
     const planned = await this.getPlannedWeeks();
 
-    // Build full planned map: key = shipTo|sku|week
     const plannedMap = new Map<string, number>();
     const plannedByWeek = new Map<number, any[]>();
-    const skuWeekToShipTo = new Map<string, string>(); // 👈 mapping untuk bonding
+    const skuWeekToShipTo = new Map<string, string>();
 
     for (const p of planned) {
-      // ✅ Normalisasi data di sini
-      const shipToName = p.shipToName.trim();
-      const sku = p.sku.trim().toUpperCase();
+      // ✅ Gunakan normalize di sini
+      const shipToName = this.normalize(p.shipToName);
+      const sku = this.normalize(p.sku);
       const week = p.week;
 
       const key = `${shipToName}|${sku}|${week}`;
       const qty = Number(p.quantityOrder) || 0;
       plannedMap.set(key, qty);
       if (!plannedByWeek.has(week)) plannedByWeek.set(week, []);
-      plannedByWeek.get(week)!.push({ ...p, quantityOrder: qty });
+      plannedByWeek.get(week)!.push({ ...p, quantityOrder: qty, shipToName, sku });
 
-      // Simpan mapping sku+week -> shipTo (asumsi 1 SKU = 1 customer per week)
       const skuWeekKey = `${sku}|${week}`;
       if (!skuWeekToShipTo.has(skuWeekKey)) {
         skuWeekToShipTo.set(skuWeekKey, shipToName);
+      } else if (skuWeekToShipTo.get(skuWeekKey) !== shipToName) {
+        console.warn(`⚠️ SKU ${sku} week ${week} muncul di lebih dari satu customer: ${skuWeekToShipTo.get(skuWeekKey)} vs ${shipToName}`);
       }
     }
 
-    // Ambil data cutting — tetap valid
     const cuttingEntries = await this.dataSource.query(`
       SELECT 
-        TRIM(c.customer_name) AS "shipToName",  -- ✅ Normalisasi
-        UPPER(TRIM(e.sku)) AS "sku",           -- ✅ Normalisasi
+        TRIM(c.customer_name) AS "shipToName",
+        UPPER(TRIM(e.sku)) AS "sku",
         e.week,
         COALESCE(e.s_code, 'MAIN') AS "s_code",
         COALESCE(al.layer_index, 1) AS "layer_index",
@@ -75,7 +78,7 @@ export class WorkableBondingService {
         e.quantity_hole,
         e.quantity_hole_remain
       FROM production_cutting_entries e
-      JOIN products p ON UPPER(TRIM(e.sku)) = UPPER(TRIM(p.sku))  -- ✅ Normalisasi
+      JOIN products p ON UPPER(TRIM(e.sku)) = UPPER(TRIM(p.sku))
       JOIN production_order_items poi ON p.product_id = poi.product_product_id AND poi.week_number::TEXT = e.week
       JOIN production_orders po ON poi.order_order_id = po.order_id
       JOIN customers c ON po.customer_customer_id = c.customer_id
@@ -92,38 +95,34 @@ export class WorkableBondingService {
           AND rp.status IN ('IN_PROGRESS', 'COMPLETED')
         WHERE br.status != 'CANCELLED'
         GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
-      ) ng ON UPPER(TRIM(e.sku)) = UPPER(TRIM(ng.sku)) AND COALESCE(e.s_code, 'MAIN') = ng.s_code  -- ✅ Normalisasi
+      ) ng ON UPPER(TRIM(e.sku)) = UPPER(TRIM(ng.sku)) AND COALESCE(e.s_code, 'MAIN') = ng.s_code
       WHERE p.category = 'FOAM' AND e.week IS NOT NULL
       ORDER BY TRIM(c.customer_name), UPPER(TRIM(e.sku)), e.week, "layer_index"
     `);
 
-    // ✅ Ambil bonding data MENTAH (tanpa JOIN ilegal)
     const rawBondingData = await this.dataSource.query(`
       SELECT 
-        UPPER(TRIM(sku)) AS "sku",  -- ✅ Normalisasi
+        UPPER(TRIM(sku)) AS "sku",
         week, 
         SUM(quantity_produksi) AS total
       FROM bonding_summary
       GROUP BY UPPER(TRIM(sku)), week
     `);
 
-    // Bangun bondingMap dengan shipToName dari mapping
     const bondingMap = new Map<string, number>();
     for (const row of rawBondingData) {
-      const sku = row.sku.trim().toUpperCase(); // ✅ Pastikan uppercase
+      const sku = this.normalize(row.sku);
       const skuWeekKey = `${sku}|${row.week}`;
       const shipToName = skuWeekToShipTo.get(skuWeekKey);
       if (shipToName) {
         const fullKey = `${shipToName}|${sku}|${row.week}`;
         bondingMap.set(fullKey, Number(row.total) || 0);
       }
-      // Jika tidak ada mapping, abaikan (tidak ada planned order)
     }
 
-    // Normalisasi cutting entries
     const normalizedEntries = cuttingEntries.map(row => ({
-      shipToName: row.shipToName.trim(),
-      sku: row.sku.trim().toUpperCase(), // ✅ Normalisasi
+      shipToName: this.normalize(row.shipToName),
+      sku: this.normalize(row.sku),
       week: Number(row.week),
       s_code: row.s_code,
       layer_index: Number(row.layer_index) || 1,
@@ -136,25 +135,22 @@ export class WorkableBondingService {
       quantity_hole_remain: Number(row.quantity_hole_remain) || 0,
     }));
 
-    // Grup cutting entries by key
     const cuttingGroups = new Map<string, any[]>();
     for (const entry of normalizedEntries) {
-      const key = `${entry.shipToName}|${entry.sku}|${entry.week}`; // ✅ Sudah dinormalisasi
+      const key = `${entry.shipToName}|${entry.sku}|${entry.week}`;
       if (!cuttingGroups.has(key)) cuttingGroups.set(key, []);
       cuttingGroups.get(key)!.push(entry);
     }
 
-    // Bangun data lengkap per planned item
     const allItems: any[] = [];
     for (const [key, qtyOrder] of plannedMap.entries()) {
       const [shipToName, sku, weekStr] = key.split('|');
       const week = Number(weekStr);
       const entries = cuttingGroups.get(key) || [];
-      const totalBonding = bondingMap.get(key) || 0; // ✅ Gunakan key lengkap
+      const totalBonding = bondingMap.get(key) || 0;
       const remainProduksi = qtyOrder - totalBonding;
       const isCompleted = remainProduksi <= 0;
 
-      // Hitung status & remarks
       const foamingEntries = entries.filter(e => e.foaming_date && !e.foaming_date_completed);
       const holeEntries = entries.filter(e => e.is_hole);
       const normalEntries = entries.filter(e => !e.foaming_date && !e.is_hole);
@@ -239,7 +235,11 @@ export class WorkableBondingService {
       .slice(0, targetItemCount);
 
     const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
-    const combined = [...remainingFromFirstWeek, ...itemsInTargetWeek];
+
+    // ✅ PERBAIKAN UTAMA: hindari duplikasi saat targetWeek === firstWeek
+    const combined = targetWeek === firstWeek
+      ? remainingFromFirstWeek
+      : [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
     const result = combined.map(item => ({
       week: item.week,
@@ -287,7 +287,11 @@ export class WorkableBondingService {
       .slice(0, targetItemCount);
 
     const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
-    const combined = [...remainingFromFirstWeek, ...itemsInTargetWeek];
+
+    // ✅ PERBAIKAN UTAMA: hindari duplikasi saat targetWeek === firstWeek
+    const combined = targetWeek === firstWeek
+      ? remainingFromFirstWeek
+      : [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
     const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
     const emptyLayers = { 'Layer 1': 0, 'Layer 2': 0, 'Layer 3': 0, 'Layer 4': 0 };
