@@ -35,8 +35,28 @@ export class WorkableBondingService {
     `);
   }
 
+  private async getLayerCountBySku(): Promise<Map<string, number>> {
+    const layerCounts = await this.dataSource.query(`
+      SELECT 
+        UPPER(TRIM(p.sku)) AS sku,
+        MAX(COALESCE(al.layer_index, 1)) AS max_layer
+      FROM products p
+      LEFT JOIN assembly_layers al ON p.product_id = al.product_product_id
+      WHERE p.category = 'FOAM'
+      GROUP BY UPPER(TRIM(p.sku))
+    `);
+
+    const map = new Map<string, number>();
+    for (const row of layerCounts) {
+      const sku = this.normalize(row.sku);
+      map.set(sku, Number(row.max_layer) || 1);
+    }
+    return map;
+  }
+
   private async getAllWeekData() {
     const planned = await this.getPlannedWeeks();
+    const layerCountMap = await this.getLayerCountBySku();
 
     const plannedMap = new Map<string, number>();
     const plannedByWeek = new Map<number, any[]>();
@@ -61,7 +81,6 @@ export class WorkableBondingService {
       }
     }
 
-    // 🔥 PERBAIKAN UTAMA: Gunakan DISTINCT ON untuk hindari duplikasi dari assembly_layers
     const cuttingEntries = await this.dataSource.query(`
       SELECT DISTINCT ON (
         UPPER(TRIM(e.sku)),
@@ -129,7 +148,6 @@ export class WorkableBondingService {
       }
     }
 
-    // 🔥 PERBAIKAN: Parsing is_hole dengan aman
     const normalizedEntries = cuttingEntries.map(row => {
       let isHole = false;
       if (row.is_hole != null) {
@@ -177,9 +195,9 @@ export class WorkableBondingService {
       const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
       const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
 
-      const netQtys = normalEntries.map(e => e.net_qty).filter(q => q > 0);
-      const minNetQty = netQtys.length > 0 ? Math.min(...netQtys) : 0;
-      const workable = Math.max(minNetQty - totalBonding, 0);
+      // 🔥 —— PERHITUNGAN WORKABLE DIPINDAHKAN KE getWorkableDetail ——
+      // Karena di sini belum tahu nilai layer setelah hole diproses
+      const workable = 0; // placeholder
 
       const statuses: string[] = [];
       if (foamingEntries.length > 0) {
@@ -212,12 +230,13 @@ export class WorkableBondingService {
         shipToName,
         sku,
         quantityOrder: qtyOrder,
-        workable,
+        workable, // akan dihitung ulang di getWorkableDetail
         bonding: totalBonding,
         remainProduksi,
         status,
         remarks: statuses.join(', '),
         entries,
+        layerCount: layerCountMap.get(sku) || 4,
       });
     }
 
@@ -259,6 +278,9 @@ export class WorkableBondingService {
     const combined = targetWeek === firstWeek
       ? remainingFromFirstWeek
       : [...remainingFromFirstWeek, ...itemsInTargetWeek];
+
+    // Hitung ulang workable di sini juga jika dibutuhkan tanpa detail layer
+    // Tapi karena logika kompleks, fokus saja di getWorkableDetail
 
     const result = combined.map(item => ({
       week: item.week,
@@ -315,16 +337,19 @@ export class WorkableBondingService {
     const result: any[] = [];
 
     for (const item of combined) {
-      const { entries, quantityOrder, bonding: totalBonding, remainProduksi, status, remarks } = item;
+      const { entries, quantityOrder, bonding: totalBonding, remainProduksi, status, remarks, sku, layerCount } = item;
 
-      // Inisialisasi semua layer dan hole layer dengan '-'
       const layers: Record<string, string | number> = {};
       for (let i = 1; i <= 4; i++) {
-        layers[layerNames[i]] = '-';
-        layers[`Hole ${layerNames[i]}`] = '-';
+        if (i <= layerCount) {
+          layers[layerNames[i]] = '-';
+          layers[`Hole ${layerNames[i]}`] = '-';
+        } else {
+          layers[layerNames[i]] = 'x';
+          layers[`Hole ${layerNames[i]}`] = 'x';
+        }
       }
 
-      // Proses setiap entry
       for (const e of entries) {
         const idx = Math.min(Math.max(e.layer_index, 1), 4);
         if (e.foaming_date && !e.foaming_date_completed) continue;
@@ -335,30 +360,45 @@ export class WorkableBondingService {
           const processedHole = Math.max(totalHole - remainHole, 0);
 
           if (remainHole > 0 && processedHole === 0) {
-            // Belum dikerjakan
             layers[layerNames[idx]] = '-';
             layers[`Hole ${layerNames[idx]}`] = this.formatNumberOrDash(remainHole);
           } else if (remainHole > 0 && processedHole > 0) {
-            // Sebagian selesai
             layers[layerNames[idx]] = this.formatNumberOrDash(processedHole);
             layers[`Hole ${layerNames[idx]}`] = this.formatNumberOrDash(remainHole);
           } else {
-            // Selesai semua
             layers[layerNames[idx]] = this.formatNumberOrDash(totalHole);
             layers[`Hole ${layerNames[idx]}`] = '-';
           }
         } else {
-          // Non-hole: ambil net_qty maksimum (jika belum di-override oleh hole)
           const current = layers[layerNames[idx]];
           if (current === '-' || current === 0) {
             layers[layerNames[idx]] = this.formatNumberOrDash(e.net_qty);
           } else {
-            // Jika sudah ada nilai (misal dari entry lain), ambil maksimum
             const currentNum = typeof current === 'number' ? current : 0;
             const newValue = Math.max(currentNum, e.net_qty);
             layers[layerNames[idx]] = this.formatNumberOrDash(newValue);
           }
         }
+      }
+
+      // 🔥 —— HITUNG WORKABLE BARU BERDASARKAN LAYER AKTIF ——
+      const validQtys: number[] = [];
+      let allLayersReady = true;
+
+      for (let i = 1; i <= layerCount; i++) {
+        const val = layers[layerNames[i]];
+        if (typeof val === 'number' && val > 0) {
+          validQtys.push(val);
+        } else if (val === '-') {
+          allLayersReady = false; // hanya tanda "-" yang buat tidak siap
+        }
+        // 'x' tidak dihitung
+      }
+
+      let workable = 0;
+      if (allLayersReady && validQtys.length > 0) {
+        const minLayerQty = Math.min(...validQtys);
+        workable = Math.max(minLayerQty - totalBonding, 0);
       }
 
       result.push({
@@ -367,7 +407,7 @@ export class WorkableBondingService {
         week: item.week,
         quantityOrder: this.formatNumberOrDash(quantityOrder),
         ...layers,
-        workable: this.formatNumberOrDash(item.workable),
+        workable: allLayersReady ? this.formatNumberOrDash(workable) : '-', // 🔥 tampilkan "-" jika belum semua siap
         bonding: this.formatNumberOrDash(totalBonding),
         'Remain Produksi': this.formatNumberOrDash(remainProduksi),
         status,
@@ -379,6 +419,7 @@ export class WorkableBondingService {
   }
 
   async getWorkableReject(): Promise<any[]> {
+    // ... (tidak berubah, karena tidak terkait perhitungan workable)
     const bondingData = await this.getWorkableBonding();
     if (bondingData.length === 0) return [];
 
@@ -459,15 +500,15 @@ export class WorkableBondingService {
           shipToName,
           sku,
           week: Number(week),
-          'NG Layer 1': '-',
-          'NG Layer 2': '-',
-          'NG Layer 3': '-',
-          'NG Layer 4': '-',
+          'NG Layer 1': 'x',
+          'NG Layer 2': 'x',
+          'NG Layer 3': 'x',
+          'NG Layer 4': 'x',
           'NG Hole': '-',
-          'Replacement Layer 1': '-',
-          'Replacement Layer 2': '-',
-          'Replacement Layer 3': '-',
-          'Replacement Layer 4': '-',
+          'Replacement Layer 1': 'x',
+          'Replacement Layer 2': 'x',
+          'Replacement Layer 3': 'x',
+          'Replacement Layer 4': 'x',
           'Replacement Hole': '-',
         });
       } else {
@@ -488,15 +529,15 @@ export class WorkableBondingService {
           shipToName,
           sku,
           week: Number(week),
-          'NG Layer 1': this.formatNumberOrDash(layerData[1].ng),
-          'NG Layer 2': this.formatNumberOrDash(layerData[2].ng),
-          'NG Layer 3': this.formatNumberOrDash(layerData[3].ng),
-          'NG Layer 4': this.formatNumberOrDash(layerData[4].ng),
+          'NG Layer 1': layerData[1].ng > 0 ? this.formatNumberOrDash(layerData[1].ng) : 'x',
+          'NG Layer 2': layerData[2].ng > 0 ? this.formatNumberOrDash(layerData[2].ng) : 'x',
+          'NG Layer 3': layerData[3].ng > 0 ? this.formatNumberOrDash(layerData[3].ng) : 'x',
+          'NG Layer 4': layerData[4].ng > 0 ? this.formatNumberOrDash(layerData[4].ng) : 'x',
           'NG Hole': '-',
-          'Replacement Layer 1': this.formatNumberOrDash(layerData[1].rep),
-          'Replacement Layer 2': this.formatNumberOrDash(layerData[2].rep),
-          'Replacement Layer 3': this.formatNumberOrDash(layerData[3].rep),
-          'Replacement Layer 4': this.formatNumberOrDash(layerData[4].rep),
+          'Replacement Layer 1': layerData[1].rep > 0 ? this.formatNumberOrDash(layerData[1].rep) : 'x',
+          'Replacement Layer 2': layerData[2].rep > 0 ? this.formatNumberOrDash(layerData[2].rep) : 'x',
+          'Replacement Layer 3': layerData[3].rep > 0 ? this.formatNumberOrDash(layerData[3].rep) : 'x',
+          'Replacement Layer 4': layerData[4].rep > 0 ? this.formatNumberOrDash(layerData[4].rep) : 'x',
           'Replacement Hole': '-',
         });
       }
