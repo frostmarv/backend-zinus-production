@@ -195,7 +195,7 @@ export class WorkableBondingService {
       const totalHoleRemain = holeEntries.reduce((sum, e) => sum + e.quantity_hole_remain, 0);
       const totalHoleQty = holeEntries.reduce((sum, e) => sum + e.quantity_hole, 0);
 
-      // 🔥 —— PERHITUNGAN WORKABLE DIPINDAHKAN KE getWorkableDetail ——
+      // 🔥 —— PERHITUNGAN WORKABLE DIPINDAHKAN KE getWorkableDetail & getWorkableBonding ——
       // Karena di sini belum tahu nilai layer setelah hole diproses
       const workable = 0; // placeholder
 
@@ -230,7 +230,7 @@ export class WorkableBondingService {
         shipToName,
         sku,
         quantityOrder: qtyOrder,
-        workable, // akan dihitung ulang di getWorkableDetail
+        workable, // akan dihitung ulang di getWorkableDetail & getWorkableBonding
         bonding: totalBonding,
         remainProduksi,
         status,
@@ -279,20 +279,83 @@ export class WorkableBondingService {
       ? remainingFromFirstWeek
       : [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
-    // Hitung ulang workable di sini juga jika dibutuhkan tanpa detail layer
-    // Tapi karena logika kompleks, fokus saja di getWorkableDetail
+    const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
 
-    const result = combined.map(item => ({
-      week: item.week,
-      shipToName: item.shipToName,
-      sku: item.sku,
-      quantityOrder: this.formatNumberOrDash(item.quantityOrder),
-      workable: this.formatNumberOrDash(item.workable),
-      bonding: this.formatNumberOrDash(item.bonding),
-      'Remain Produksi': this.formatNumberOrDash(item.remainProduksi),
-      status: item.status,
-      remarks: item.remarks || '-',
-    }));
+    // 🔥 —— HITUNG ULANG WORKABLE UNTUK getWorkableBonding ——
+    const result = combined.map(item => {
+      const { entries, bonding: totalBonding, quantityOrder } = item;
+      const layerCount = item.layerCount || 4;
+
+      // Buat layer sementara untuk perhitungan workable
+      const layers: Record<string, string | number> = {};
+      for (let i = 1; i <= 4; i++) {
+        if (i <= layerCount) {
+          layers[layerNames[i]] = '-';
+        } else {
+          layers[layerNames[i]] = 'x';
+        }
+      }
+
+      for (const e of entries) {
+        const idx = Math.min(Math.max(e.layer_index, 1), 4);
+        if (e.foaming_date && !e.foaming_date_completed) continue;
+
+        if (e.is_hole) {
+          const totalHole = Number(e.quantity_hole) || 0;
+          const remainHole = Number(e.quantity_hole_remain) || 0;
+          const processedHole = Math.max(totalHole - remainHole, 0);
+
+          if (remainHole > 0 && processedHole === 0) {
+            layers[layerNames[idx]] = '-';
+          } else if (remainHole > 0 && processedHole > 0) {
+            layers[layerNames[idx]] = this.formatNumberOrDash(processedHole);
+          } else {
+            layers[layerNames[idx]] = this.formatNumberOrDash(totalHole);
+          }
+        } else {
+          const current = layers[layerNames[idx]];
+          if (current === '-' || current === 0) {
+            layers[layerNames[idx]] = this.formatNumberOrDash(e.net_qty);
+          } else {
+            const currentNum = typeof current === 'number' ? current : 0;
+            const newValue = Math.max(currentNum, e.net_qty);
+            layers[layerNames[idx]] = this.formatNumberOrDash(newValue);
+          }
+        }
+      }
+
+      // 🔥 —— HITUNG WORKABLE ——
+      const validQtys: number[] = [];
+      let allLayersReady = true;
+
+      for (let i = 1; i <= layerCount; i++) {
+        const val = layers[layerNames[i]];
+        if (typeof val === 'number' && val > 0) {
+          validQtys.push(val);
+        } else if (val === '-') {
+          allLayersReady = false;
+        }
+        // 'x' tidak dihitung
+      }
+
+      let workable = 0;
+      if (allLayersReady && validQtys.length > 0) {
+        const minLayerQty = Math.min(...validQtys);
+        workable = Math.max(minLayerQty - totalBonding, 0);
+      }
+
+      return {
+        week: item.week,
+        shipToName: item.shipToName,
+        sku: item.sku,
+        quantityOrder: this.formatNumberOrDash(item.quantityOrder),
+        workable: allLayersReady ? this.formatNumberOrDash(workable) : '-', // 🔥 tampilkan "-" jika belum semua siap
+        bonding: this.formatNumberOrDash(totalBonding),
+        'Remain Produksi': this.formatNumberOrDash(item.remainProduksi),
+        status: item.status,
+        remarks: item.remarks || '-',
+      };
+    });
 
     return this.sortResult(result);
   }
