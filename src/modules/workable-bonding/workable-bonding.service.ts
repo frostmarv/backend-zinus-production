@@ -14,7 +14,6 @@ export class WorkableBondingService {
     return num;
   }
 
-  // 🔧 Normalisasi string: hapus semua whitespace berlebih, trim, uppercase
   private normalize(val: string): string {
     return val.replace(/\s+/g, ' ').trim().toUpperCase();
   }
@@ -44,7 +43,6 @@ export class WorkableBondingService {
     const skuWeekToShipTo = new Map<string, string>();
 
     for (const p of planned) {
-      // ✅ Gunakan normalize di sini
       const shipToName = this.normalize(p.shipToName);
       const sku = this.normalize(p.sku);
       const week = p.week;
@@ -63,8 +61,14 @@ export class WorkableBondingService {
       }
     }
 
+    // 🔥 PERBAIKAN UTAMA: Gunakan DISTINCT ON untuk hindari duplikasi dari assembly_layers
     const cuttingEntries = await this.dataSource.query(`
-      SELECT 
+      SELECT DISTINCT ON (
+        UPPER(TRIM(e.sku)),
+        COALESCE(e.s_code, 'MAIN'),
+        e.week,
+        TRIM(c.customer_name)
+      )
         TRIM(c.customer_name) AS "shipToName",
         UPPER(TRIM(e.sku)) AS "sku",
         e.week,
@@ -97,7 +101,12 @@ export class WorkableBondingService {
         GROUP BY br.sku, COALESCE(br.s_code, 'MAIN')
       ) ng ON UPPER(TRIM(e.sku)) = UPPER(TRIM(ng.sku)) AND COALESCE(e.s_code, 'MAIN') = ng.s_code
       WHERE p.category = 'FOAM' AND e.week IS NOT NULL
-      ORDER BY TRIM(c.customer_name), UPPER(TRIM(e.sku)), e.week, "layer_index"
+      ORDER BY 
+        UPPER(TRIM(e.sku)),
+        COALESCE(e.s_code, 'MAIN'),
+        e.week,
+        TRIM(c.customer_name),
+        al.layer_index NULLS LAST
     `);
 
     const rawBondingData = await this.dataSource.query(`
@@ -120,20 +129,29 @@ export class WorkableBondingService {
       }
     }
 
-    const normalizedEntries = cuttingEntries.map(row => ({
-      shipToName: this.normalize(row.shipToName),
-      sku: this.normalize(row.sku),
-      week: Number(row.week),
-      s_code: row.s_code,
-      layer_index: Number(row.layer_index) || 1,
-      cutting_qty: Number(row.cutting_qty) || 0,
-      net_qty: Number(row.net_qty) || 0,
-      foaming_date: row.foaming_date || null,
-      foaming_date_completed: Boolean(row.foaming_date_completed),
-      is_hole: Boolean(row.is_hole),
-      quantity_hole: Number(row.quantity_hole) || 0,
-      quantity_hole_remain: Number(row.quantity_hole_remain) || 0,
-    }));
+    // 🔥 PERBAIKAN: Parsing is_hole dengan aman
+    const normalizedEntries = cuttingEntries.map(row => {
+      let isHole = false;
+      if (row.is_hole != null) {
+        const val = String(row.is_hole).trim().toUpperCase();
+        isHole = val === 'TRUE' || val === '1' || val === 'HOLE' || val === 'YES';
+      }
+
+      return {
+        shipToName: this.normalize(row.shipToName),
+        sku: this.normalize(row.sku),
+        week: Number(row.week),
+        s_code: row.s_code,
+        layer_index: Math.max(1, Math.min(4, Number(row.layer_index) || 1)),
+        cutting_qty: Math.max(0, Number(row.cutting_qty) || 0),
+        net_qty: Math.max(0, Number(row.net_qty) || 0),
+        foaming_date: row.foaming_date || null,
+        foaming_date_completed: Boolean(row.foaming_date_completed),
+        is_hole: isHole,
+        quantity_hole: Math.max(0, Number(row.quantity_hole) || 0),
+        quantity_hole_remain: Math.max(0, Number(row.quantity_hole_remain) || 0),
+      };
+    });
 
     const cuttingGroups = new Map<string, any[]>();
     for (const entry of normalizedEntries) {
@@ -169,7 +187,9 @@ export class WorkableBondingService {
         statuses.push(`Foaming Date: ${dateStr}`);
       }
       if (totalHoleRemain > 0) {
-        statuses.push(`Hole Processing: ${totalHoleQty - totalHoleRemain}/${totalHoleQty} done`);
+        const done = Math.max(0, totalHoleQty - totalHoleRemain);
+        const displayTotal = totalHoleQty > 0 ? totalHoleQty : 0;
+        statuses.push(`Hole Processing: ${done}/${displayTotal} done`);
       }
       if (statuses.length === 0 && normalEntries.some(e => e.cutting_qty > 0)) {
         statuses.push('Cutting in progress');
@@ -236,7 +256,6 @@ export class WorkableBondingService {
 
     const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
 
-    // ✅ PERBAIKAN UTAMA: hindari duplikasi saat targetWeek === firstWeek
     const combined = targetWeek === firstWeek
       ? remainingFromFirstWeek
       : [...remainingFromFirstWeek, ...itemsInTargetWeek];
@@ -288,37 +307,58 @@ export class WorkableBondingService {
 
     const remainingFromFirstWeek = initialItems.filter(item => item.status !== 'Completed');
 
-    // ✅ PERBAIKAN UTAMA: hindari duplikasi saat targetWeek === firstWeek
     const combined = targetWeek === firstWeek
       ? remainingFromFirstWeek
       : [...remainingFromFirstWeek, ...itemsInTargetWeek];
 
     const layerNames = { 1: 'Layer 1', 2: 'Layer 2', 3: 'Layer 3', 4: 'Layer 4' };
-    const emptyLayers = { 'Layer 1': 0, 'Layer 2': 0, 'Layer 3': 0, 'Layer 4': 0 };
     const result: any[] = [];
 
     for (const item of combined) {
       const { entries, quantityOrder, bonding: totalBonding, remainProduksi, status, remarks } = item;
 
-      const layerNet: Record<number, number> = {1:0,2:0,3:0,4:0};
-      const layerHoleRemain: Record<number, number> = {1:0,2:0,3:0,4:0};
+      // Inisialisasi semua layer dan hole layer dengan '-'
+      const layers: Record<string, string | number> = {};
+      for (let i = 1; i <= 4; i++) {
+        layers[layerNames[i]] = '-';
+        layers[`Hole ${layerNames[i]}`] = '-';
+      }
 
+      // Proses setiap entry
       for (const e of entries) {
         const idx = Math.min(Math.max(e.layer_index, 1), 4);
         if (e.foaming_date && !e.foaming_date_completed) continue;
-        if (e.is_hole) {
-          layerHoleRemain[idx] += e.quantity_hole_remain;
-        } else {
-          layerNet[idx] = Math.max(layerNet[idx], e.net_qty);
-        }
-      }
 
-      const layers: Record<string, string | number> = {...emptyLayers};
-      for (let i = 1; i <= 4; i++) {
-        const workableLayer = layerHoleRemain[i] === 0 
-          ? Math.max(layerNet[i] - totalBonding, 0)
-          : 0;
-        layers[layerNames[i]] = this.formatNumberOrDash(workableLayer);
+        if (e.is_hole) {
+          const totalHole = Number(e.quantity_hole) || 0;
+          const remainHole = Number(e.quantity_hole_remain) || 0;
+          const processedHole = Math.max(totalHole - remainHole, 0);
+
+          if (remainHole > 0 && processedHole === 0) {
+            // Belum dikerjakan
+            layers[layerNames[idx]] = '-';
+            layers[`Hole ${layerNames[idx]}`] = this.formatNumberOrDash(remainHole);
+          } else if (remainHole > 0 && processedHole > 0) {
+            // Sebagian selesai
+            layers[layerNames[idx]] = this.formatNumberOrDash(processedHole);
+            layers[`Hole ${layerNames[idx]}`] = this.formatNumberOrDash(remainHole);
+          } else {
+            // Selesai semua
+            layers[layerNames[idx]] = this.formatNumberOrDash(totalHole);
+            layers[`Hole ${layerNames[idx]}`] = '-';
+          }
+        } else {
+          // Non-hole: ambil net_qty maksimum (jika belum di-override oleh hole)
+          const current = layers[layerNames[idx]];
+          if (current === '-' || current === 0) {
+            layers[layerNames[idx]] = this.formatNumberOrDash(e.net_qty);
+          } else {
+            // Jika sudah ada nilai (misal dari entry lain), ambil maksimum
+            const currentNum = typeof current === 'number' ? current : 0;
+            const newValue = Math.max(currentNum, e.net_qty);
+            layers[layerNames[idx]] = this.formatNumberOrDash(newValue);
+          }
+        }
       }
 
       result.push({
