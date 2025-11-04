@@ -23,6 +23,7 @@ import { ProductModule } from './modules/products/product.module';
 import { ProductionOrderModule } from './modules/production-order/production-order.module';
 import { ProductionOrderItemModule } from './modules/production-order-item/production-order-item.module';
 import { ProductionPlanningModule } from './modules/production-planning/production-planning.module';
+import { PackingFoamModule } from './modules/packing-foam/packing-foam.module';
 import { ReplacementModule } from './modules/replacement/replacement.module';
 import { WorkableBondingModule } from './modules/workable-bonding/workable-bonding.module';
 import { WorkableLiveModule } from './modules/workable-live/live.module';
@@ -91,6 +92,7 @@ import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
     ProductionOrderModule,
     ProductionOrderItemModule,
     ProductionPlanningModule,
+    PackingFoamModule,
     ReplacementModule,
     ScheduleModule.forRoot(),
     WorkableBondingModule,
